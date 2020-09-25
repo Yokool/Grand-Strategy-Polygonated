@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
@@ -19,11 +20,29 @@ public class GameWorld : MonoBehaviour
     private Tilemap terrainTilemap;
     private TilemapRenderer terrainTilemapRenderer;
 
+
     private Tile[,] tilesByLoc;
-    
+
+    private int worldWidth;
+    private int worldHeight;
+
     public Tile GetTileByLoc(int x, int y)
     {
         return tilesByLoc[x, y];
+    }
+
+
+    public void IteratorOverWorldTiles(Action<Tile, int, int> consumer)
+    {
+        
+        for(int y = 0; y < worldHeight; ++y)
+        {
+            for(int x = 0; x < worldWidth; ++x)
+            {
+                consumer(GetTileByLoc(x,y), x, y);
+            }
+        }
+
     }
 
 
@@ -52,22 +71,73 @@ public class GameWorld : MonoBehaviour
     {
 
         Texture2D terrainMapT2D = GameTexture2DUtility.FileToT2D(terrainMapFile);
+
+        worldWidth = terrainMapT2D.width;
+        worldHeight = terrainMapT2D.height;
+
         Texture2D countryMapT2D = GameTexture2DUtility.FileToT2D(countryMapFile);
 
-        if(!ValidateDimensions(terrainMapT2D, countryMapT2D))
+        if(!ValidateDimensions(countryMapT2D))
         {
-            Debug.LogError("Terrain map and country map have different dimensions.");
+            Debug.LogError("Country map has different dimensions than those which have been set by the terrain map.");
             return;
         }
 
         InitializeTerrainTilemap(terrainMapT2D);
         InitializeCountryTilemap(countryMapT2D);
+        PopulateTiles();
+        /*
+        for(int y = 0; y < worldHeight; ++y)
+        {
+            for(int x = 0; x < worldWidth; ++x)
+            {
+                TileBase tileSprite = terrainTilemap.GetTile(new Vector3Int(x, y, 0));
 
+                TileData tileData = GetTileByLoc(x, y).TileData;
+                Country tileCountry = tileData.tileCountry;
+
+                if(tileCountry == null)
+                {
+                    continue;
+                }
+
+                long population = tileData.Population;
+                Debug.Log(population);
+
+                terrainTilemap.SetTileFlags(new Vector3Int(x, y, 0), TileFlags.None);
+                //terrainTilemap.SetColor(new Vector3Int(x, y, 0), Color32.Lerp(Color.black, Color.white, (float)population / (float)tileCountry.Population));
+                terrainTilemap.SetColor(new Vector3Int(x, y, 0), Color.red);
+            }
+        }
+        */
     }
 
-    private bool ValidateDimensions(Texture2D t1, Texture2D t2)
+    private void PopulateTiles()
     {
-        return (t1.width == t2.width) && (t1.height == t2.height);
+        GameCountriesDatabase.IterateOverAllCountries((country) => {
+
+            double hospitabilitySum = 0.0;
+            long totalPopulation = country.Population;
+
+            country.IterateOverCountryTiles((countryTile) => {
+                hospitabilitySum += countryTile.TileData.BaseHospitability;
+            });
+
+            country.IterateOverCountryTiles((countryTile) => {
+
+                TileData tileData = countryTile.TileData;
+                tileData.Population = (long)(totalPopulation * (tileData.BaseHospitability / hospitabilitySum));
+                countryTile.TileData = tileData;
+            });
+
+
+
+        });
+    }
+
+    private bool ValidateDimensions(Texture2D t2d)
+    {
+        return (t2d.width == worldWidth) && (t2d.height == worldHeight);
     }
 
     private void InitializeTerrainTilemap(Texture2D terrainMapT2D)
@@ -114,8 +184,14 @@ public class GameWorld : MonoBehaviour
 
             Tile tile = GetTileByLoc(x, y);
             TileData tileData = tile.TileData;
-            tileData.tileCountry = GameCountriesDatabase.TryGetCountryByColorKey(pixelColor);
+            Country country = GameCountriesDatabase.TryGetCountryByColorKey(pixelColor);
+            tileData.tileCountry = country;
+
+            country.AddTile(tile);
+
             tile.TileData = tileData;
+
+            
 
 
             
@@ -161,16 +237,16 @@ public static class GameTileDatabase
         allGameTiles = new List<TileBlueprint>();
 
 
-        allGameTiles.Add(new TileBlueprint(new Color32(96, 31, 31, 1), GameTileSprites.MudLandsTile, new TileData(0L, 10L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(255, 191, 0, 1), GameTileSprites.SandTile, new TileData(0L, 500L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(158, 236, 219, 1), GameTileSprites.SnowTile, new TileData(0L, 50L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(90, 90, 90, 1), GameTileSprites.MountainsTile, new TileData(0L, 100L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(107, 206, 50, 1), GameTileSprites.PlainsTile, new TileData(0L, 100000L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(178, 136, 117, 1), GameTileSprites.HillsTile, new TileData(0L, 6000L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(19, 44, 105, 1), GameTileSprites.DeepWaterTile, new TileData(0L, 0L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(66, 131, 191, 1), GameTileSprites.WaterTile, new TileData(0L, 0L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(204, 242, 255, 1), GameTileSprites.ShallowWaterTile, new TileData(0L, 0L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(36, 96, 22, 1), GameTileSprites.ForestTile, new TileData(0L, 2000L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(96, 31, 31, 1), GameTileSprites.MudLandsTile, new TileData(0.1)));
+        allGameTiles.Add(new TileBlueprint(new Color32(255, 191, 0, 1), GameTileSprites.SandTile, new TileData(0.1)));
+        allGameTiles.Add(new TileBlueprint(new Color32(158, 236, 219, 1), GameTileSprites.SnowTile, new TileData(0.1)));
+        allGameTiles.Add(new TileBlueprint(new Color32(90, 90, 90, 1), GameTileSprites.MountainsTile, new TileData(0.15)));
+        allGameTiles.Add(new TileBlueprint(new Color32(107, 206, 50, 1), GameTileSprites.PlainsTile, new TileData(0.7)));
+        allGameTiles.Add(new TileBlueprint(new Color32(178, 136, 117, 1), GameTileSprites.HillsTile, new TileData(0.4)));
+        allGameTiles.Add(new TileBlueprint(new Color32(19, 44, 105, 1), GameTileSprites.DeepWaterTile, new TileData(0.0)));
+        allGameTiles.Add(new TileBlueprint(new Color32(66, 131, 191, 1), GameTileSprites.WaterTile, new TileData(0.0)));
+        allGameTiles.Add(new TileBlueprint(new Color32(204, 242, 255, 1), GameTileSprites.ShallowWaterTile, new TileData(0.0)));
+        allGameTiles.Add(new TileBlueprint(new Color32(36, 96, 22, 1), GameTileSprites.ForestTile, new TileData(0.4)));
         
     }
 
@@ -209,6 +285,11 @@ public static class GameTileDatabase
 
 }
 
+public enum CountryIDs
+{
+    TESTING_COUNTRY = 0
+}
+
 public static class GameCountriesDatabase
 {
 
@@ -217,7 +298,35 @@ public static class GameCountriesDatabase
 
     public static void _Initialize()
     {
-        countries.Add(new Country("Testing Country", new Color32(255, 255, 255, 1), new Color32(255, 0, 0, 1)));
+        countries.Add(new Country("Testing Country", CountryIDs.TESTING_COUNTRY, new Color32(255, 255, 255, 1), new Color32(255, 0, 0, 1), 10000000L));
+    }
+
+    public static void IterateOverAllCountries(Action<Country> consumer)
+    {
+
+        for(int i = 0; i < countries.Count; ++i)
+        {
+            consumer(countries[i]);
+        }
+
+    }
+
+    public static Country GetCountry(CountryIDs ID)
+    {
+
+        for(int i = 0; i < countries.Count; ++i)
+        {
+            Country country = countries[i];
+            if (country.ID.Equals(ID))
+            {
+                return country;
+            }
+            
+        }
+
+        Debug.LogError("Country with ID: " + ID + " could not be found.");
+        return null;
+
     }
 
     public static bool ContainsColorKey(Color color)
@@ -268,12 +377,45 @@ public class Country
     private string countryName;
     public string CountryName => countryName;
 
+    private CountryIDs id;
+    public CountryIDs ID => id;
 
-    public Country(string countryName, Color32 colorKey, Color32 ingameColor)
+    public long Population
+    {
+        get;
+        set;
+    }
+
+    private List<Tile> countryTiles = new List<Tile>();
+    
+    public void AddTile(Tile tile)
+    {
+        countryTiles.Add(tile);
+    }
+
+    public void IterateOverCountryTiles(Action<Tile> consumer)
+    {
+
+        for(int i = 0; i < countryTiles.Count; ++i)
+        {
+            consumer(countryTiles[i]);
+        }
+
+    }
+
+    public List<Tile> GetTiles()
+    {
+        return countryTiles;
+    }
+
+
+    public Country(string countryName, CountryIDs id, Color32 colorKey, Color32 ingameColor, long Population)
     {
         this.countryName = countryName;
+        this.id = id;
         this.colorKey = colorKey;
         this.ingameColor = ingameColor;
+        this.Population = Population;
     }
 
 }
@@ -400,21 +542,13 @@ public class Tile
 public struct TileData
 {
 
-    private long people;
-
-    public long People
+    public long Population
     {
-        get
-        {
-            return people;
-        }
-        set
-        {
-            people = MathL.ClampL(value, 0L, MaxPeople);
-        }
+        get;
+        set;
     }
 
-    public long MaxPeople
+    public double BaseHospitability
     {
         get;
         set;
@@ -426,13 +560,14 @@ public struct TileData
         set;
     }
 
-    public TileData(long People, long MaxPeople)
+    public TileData(double BaseHospitability)
     {
-        people = 0L;
         tileCountry = null;
+        Population = 0L;
 
-        this.MaxPeople = MaxPeople;
-        this.People = People;
+        this.BaseHospitability = BaseHospitability;
+
+
     }
 
 
