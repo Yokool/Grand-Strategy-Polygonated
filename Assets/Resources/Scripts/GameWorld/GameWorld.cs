@@ -30,8 +30,6 @@ public class GameWorld : MonoBehaviour
     private void Awake()
     {
 
-        
-
         if (instance != null)
         {
             Debug.LogWarning("Tried to create a second instance of BitmapPolygonConverter.");
@@ -44,72 +42,89 @@ public class GameWorld : MonoBehaviour
 
         instance = this;
 
-
-        CreateWorld(new FileInfo(@"C:\Users\ederm\Desktop\f.png"));
+        // TODO: CHANGE
+        CreateWorld(new FileInfo(@"C:\Users\ederm\Desktop\f.png"), new FileInfo(@"C:\Users\ederm\Desktop\e.png"));
 
     }
 
     
-    private void CreateWorld(FileInfo fileInfo)
+    private void CreateWorld(FileInfo terrainMapFile, FileInfo countryMapFile)
     {
-        InitializeTilemap(fileInfo);
+
+        Texture2D terrainMapT2D = GameTexture2DUtility.FileToT2D(terrainMapFile);
+        Texture2D countryMapT2D = GameTexture2DUtility.FileToT2D(countryMapFile);
+
+        if(!ValidateDimensions(terrainMapT2D, countryMapT2D))
+        {
+            Debug.LogError("Terrain map and country map have different dimensions.");
+            return;
+        }
+
+        InitializeTerrainTilemap(terrainMapT2D);
+        InitializeCountryTilemap(countryMapT2D);
+
     }
 
-    private void InitializeTilemap(FileInfo fileInfo)
+    private bool ValidateDimensions(Texture2D t1, Texture2D t2)
     {
-        Texture2D texture2D = GameTexture2DUtility.FileToT2D(fileInfo);
+        return (t1.width == t2.width) && (t1.height == t2.height);
+    }
 
-        CreateTileLocArrayByDimension(texture2D.width, texture2D.height);
+    private void InitializeTerrainTilemap(Texture2D terrainMapT2D)
+    {
 
-        CustomPerlinNoise customPerlinNoise = new CustomPerlinNoise();
+        CreateTileLocArrayByDimension(terrainMapT2D.width, terrainMapT2D.height);
 
-        for (int y = 0; y < texture2D.height; ++y)
+        for (int y = 0; y < terrainMapT2D.height; ++y)
         {
-            for (int x = 0; x < texture2D.width; ++x)
+            for (int x = 0; x < terrainMapT2D.width; ++x)
             {
 
-
-                Color32 pixelColor = texture2D.GetPixel(x, y);
+                Color32 pixelColor = terrainMapT2D.GetPixel(x, y);
 
 
                 if (GameTileDatabase.ContainsColor(pixelColor))
                 {
                     CreateTerrainTile(x, y, pixelColor);
                 }
-                
-                float perlinNoise = customPerlinNoise.PerlinNoise(x * 0.1f, y * 0.1f);
-                perlinNoise = ((perlinNoise + 1) * 0.5f);
 
-                float perlinNoise2 = customPerlinNoise.PerlinNoise((x + 1000) * 0.05f, (y + 1000) * 0.05f);
-                perlinNoise2 = ((perlinNoise2 + 1) * 0.5f) * 0.5f;
 
-                float perlinNoise3 = customPerlinNoise.PerlinNoise((x + 10000) * 0.025f, (y + 10000) * 0.025f);
-                perlinNoise3 = ((perlinNoise3 + 1) * 0.5f) * 0.25f;
-
-                perlinNoise = (perlinNoise + perlinNoise2 + perlinNoise3);
-
-                TileData tileData = tilesByLoc[x, y].TileData;
-                tileData.People = (long)(100000f * perlinNoise);
-                tilesByLoc[x, y].TileData = tileData;
-                
             }
         }
-
-        
-        for (int y = 0; y < texture2D.height; ++y)
-        {
-            for(int x = 0; x < texture2D.width; ++x)
-            {
-                terrainTilemap.SetTileFlags(new Vector3Int(x, y, 0), TileFlags.None);
-                terrainTilemap.SetColor(new Vector3Int(x, y, 0), Color.Lerp(Color.black, Color.white, tilesByLoc[x, y].TileData.People / 100000f));
-                //Debug.Log(terrainTilemap.GetColor(new Vector3Int(x, y, 0)));
-            }
-        }
-        
 
     }
 
-    private void CreateTerrainTile(int x, int y, Color pixelColor)
+    private void InitializeCountryTilemap(Texture2D countryMapT2D)
+    {
+        Color transparent = new Color32(0, 0, 0, 1);
+
+        GameTexture2DUtility.IterateOverT2D(countryMapT2D, (texture2D, pixelColor, x, y) => {
+
+            if(ColorUtility.ColorEquals(transparent, pixelColor))
+            {
+                return;
+            }
+
+            if (!GameCountriesDatabase.ContainsColorKey(pixelColor))
+            {
+                Debug.LogError("Country database doesn't have a country with the key of RGB values: " + pixelColor);
+                return;
+            }
+
+
+            Tile tile = GetTileByLoc(x, y);
+            TileData tileData = tile.TileData;
+            tileData.tileCountry = GameCountriesDatabase.TryGetCountryByColorKey(pixelColor);
+            tile.TileData = tileData;
+
+
+            
+
+        });
+
+    }
+
+    private Tile CreateTerrainTile(int x, int y, Color pixelColor)
     {
         TileBlueprint tileBlueprint = GameTileDatabase.GetBlueprintByColor(pixelColor);
         TileBase tileBaseSpriteFromBlueprint = tileBlueprint.AssociatedTileSprite;
@@ -121,6 +136,9 @@ public class GameWorld : MonoBehaviour
         Tile tile = new Tile();
         tilesByLoc[x, y] = tile;
         tile.TileData = tileBlueprint.TileData;
+
+        return tile;
+
     }
 
     private void CreateTileLocArrayByDimension(int width, int height)
@@ -143,16 +161,16 @@ public static class GameTileDatabase
         allGameTiles = new List<TileBlueprint>();
 
 
-        allGameTiles.Add(new TileBlueprint(new Color32(96, 31, 31, 1), AllGameTileBases.MudLandsTile, new TileData(0L, 10L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(255, 191, 0, 1), AllGameTileBases.SandTile, new TileData(0L, 500L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(158, 236, 219, 1), AllGameTileBases.SnowTile, new TileData(0L, 50L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(90, 90, 90, 1), AllGameTileBases.MountainsTile, new TileData(0L, 100L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(107, 206, 50, 1), AllGameTileBases.PlainsTile, new TileData(0L, 100000L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(178, 136, 117, 1), AllGameTileBases.HillsTile, new TileData(0L, 6000L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(19, 44, 105, 1), AllGameTileBases.DeepWaterTile, new TileData(0L, 0L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(66, 131, 191, 1), AllGameTileBases.WaterTile, new TileData(0L, 0L)));
-        allGameTiles.Add(new TileBlueprint(new Color32(204, 242, 255, 1), AllGameTileBases.ShallowWaterTile, new TileData(0L, 0)));
-        allGameTiles.Add(new TileBlueprint(new Color32(36, 96, 22, 1), AllGameTileBases.ForestTile, new TileData(0L, 2000L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(96, 31, 31, 1), GameTileSprites.MudLandsTile, new TileData(0L, 10L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(255, 191, 0, 1), GameTileSprites.SandTile, new TileData(0L, 500L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(158, 236, 219, 1), GameTileSprites.SnowTile, new TileData(0L, 50L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(90, 90, 90, 1), GameTileSprites.MountainsTile, new TileData(0L, 100L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(107, 206, 50, 1), GameTileSprites.PlainsTile, new TileData(0L, 100000L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(178, 136, 117, 1), GameTileSprites.HillsTile, new TileData(0L, 6000L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(19, 44, 105, 1), GameTileSprites.DeepWaterTile, new TileData(0L, 0L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(66, 131, 191, 1), GameTileSprites.WaterTile, new TileData(0L, 0L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(204, 242, 255, 1), GameTileSprites.ShallowWaterTile, new TileData(0L, 0L)));
+        allGameTiles.Add(new TileBlueprint(new Color32(36, 96, 22, 1), GameTileSprites.ForestTile, new TileData(0L, 2000L)));
         
     }
 
@@ -188,6 +206,75 @@ public static class GameTileDatabase
         return null;
     }
 
+
+}
+
+public static class GameCountriesDatabase
+{
+
+    private static List<Country> countries = new List<Country>();
+    public static List<Country> Countries => countries;
+
+    public static void _Initialize()
+    {
+        countries.Add(new Country("Testing Country", new Color32(255, 255, 255, 1), new Color32(255, 0, 0, 1)));
+    }
+
+    public static bool ContainsColorKey(Color color)
+    {
+
+        for (int i = 0; i < countries.Count; ++i)
+        {
+            Country country = countries[i];
+            if (ColorUtility.ColorEquals(color, country.ColorKey))
+            {
+                return true;
+            }
+
+        }
+
+        return false;
+
+    }
+
+    public static Country TryGetCountryByColorKey(Color32 colorKey)
+    {
+        for (int i = 0; i < countries.Count; ++i)
+        {
+            Country country = countries[i];
+            if (ColorUtility.ColorEquals(colorKey, country.ColorKey))
+            {
+                return country;
+            }
+
+        }
+
+        return null;
+
+    }
+
+}
+
+public class Country
+{
+
+    private Color32 colorKey;
+    public Color32 ColorKey => colorKey;
+
+    private Color32 ingameColor;
+    public Color32 IngameColor => ingameColor;
+
+
+    private string countryName;
+    public string CountryName => countryName;
+
+
+    public Country(string countryName, Color32 colorKey, Color32 ingameColor)
+    {
+        this.countryName = countryName;
+        this.colorKey = colorKey;
+        this.ingameColor = ingameColor;
+    }
 
 }
 
@@ -333,9 +420,17 @@ public struct TileData
         set;
     }
 
+    public Country tileCountry
+    {
+        get;
+        set;
+    }
+
     public TileData(long People, long MaxPeople)
     {
         people = 0L;
+        tileCountry = null;
+
         this.MaxPeople = MaxPeople;
         this.People = People;
     }
@@ -397,7 +492,7 @@ public enum Goods
     FRUIT
 }
 
-public static class AllGameTileBases
+public static class GameTileSprites
 {
 
 
@@ -484,8 +579,9 @@ public static class OrderedRuntimeInitializer
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterAssembliesLoaded)]
     private static void AfterAssembliesLoaded()
     {
-        AllGameTileBases._Load();
+        GameTileSprites._Load();
         GameTileDatabase._Initialize();
+        GameCountriesDatabase._Initialize();
     }
 
 }
@@ -519,6 +615,21 @@ public static class GameTexture2DUtility
         texture2D.LoadImage(GameFileUtility.ReadFile(fileInfo));
 
         return texture2D;
+    }
+
+    public static void IterateOverT2D(Texture2D texture2D, Action<Texture2D, Color32, int, int> consumer)
+    {
+        int height = texture2D.height;
+        int width = texture2D.width;
+
+        for (int y = 0; y < height; ++y)
+        {
+            for(int x = 0; x < width; ++x)
+            {
+                consumer(texture2D, texture2D.GetPixel(x, y), x, y);
+            }
+        }
+
     }
 
 }
