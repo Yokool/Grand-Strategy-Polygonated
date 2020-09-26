@@ -31,6 +31,10 @@ public class GameWorld : MonoBehaviour
         return tilesByLoc[x, y];
     }
 
+    public Tile GetTileByLoc(Vector2Int position)
+    {
+        return tilesByLoc[position.x, position.y];
+    }
 
     public void IteratorOverWorldTiles(Action<Tile, int, int> consumer)
     {
@@ -85,6 +89,7 @@ public class GameWorld : MonoBehaviour
 
         InitializeTerrainTilemap(terrainMapT2D);
         InitializeCountryTilemap(countryMapT2D);
+        CalculateHospitability();
         PopulateTiles();
         /*
         for(int y = 0; y < worldHeight; ++y)
@@ -112,6 +117,46 @@ public class GameWorld : MonoBehaviour
         */
     }
 
+    private void CalculateHospitability()
+    {
+
+        Dictionary<Vector2Int, int> savedHospitability = new Dictionary<Vector2Int, int>(); 
+
+        IteratorOverWorldTiles((tile, x, y) => {
+
+            TileData TD = tile.TileData;
+
+            Tile N = GetTileRelative(tile, Direction.NORTH);
+            Tile E = GetTileRelative(tile, Direction.EAST);
+            Tile S = GetTileRelative(tile, Direction.SOUTH);
+            Tile W = GetTileRelative(tile, Direction.WEST);
+
+            TileData N_TD = N.TileData;
+            TileData E_TD = E.TileData;
+            TileData S_TD = S.TileData;
+            TileData W_TD = W.TileData;
+
+            if (TD._TileID.Equals(N_TD._TileID))
+            {
+
+            }
+
+
+
+
+        });
+    }
+
+    public Tile GetTileRelative(Tile tile, Direction direction)
+    {
+
+        Vector2Int tilePosition = tile.TileData.Position;
+        Vector2Int directionToRelativePosition = direction.DirectionToVector();
+
+        return GetTileByLoc(tilePosition + directionToRelativePosition);
+
+    }
+
     private void PopulateTiles()
     {
         GameCountriesDatabase.IterateOverAllCountries((country) => {
@@ -129,8 +174,6 @@ public class GameWorld : MonoBehaviour
                 tileData.Population = (long)(totalPopulation * (tileData.BaseHospitability / hospitabilitySum));
                 countryTile.TileData = tileData;
             });
-
-
 
         });
     }
@@ -211,7 +254,13 @@ public class GameWorld : MonoBehaviour
 
         Tile tile = new Tile();
         tilesByLoc[x, y] = tile;
+
         tile.TileData = tileBlueprint.TileData;
+
+
+        TileData tileData = tile.TileData;
+        tileData.Position = new Vector2Int(x, y);
+        tile.TileData = tileData;
 
         return tile;
 
@@ -225,29 +274,38 @@ public class GameWorld : MonoBehaviour
 
 }
 
+public enum TileID
+{
+    MUD_LANDS,
+    SAND,
+    SNOW,
+    MOUNTAINS,
+    PLAINS,
+    HILLS,
+    DEEP_WATER,
+    WATER,
+    SHALLOW_WATER,
+    FOREST
+}
+
 public static class GameTileDatabase
 {
 
-    private static List<TileBlueprint> allGameTiles;
+    private static List<TileBlueprint> allGameTiles = new List<TileBlueprint>();
     public static List<TileBlueprint> AllGameTiles => allGameTiles;
 
     public static void _Initialize()
     {
-
-        allGameTiles = new List<TileBlueprint>();
-
-
-        allGameTiles.Add(new TileBlueprint(new Color32(96, 31, 31, 1), GameTileSprites.MudLandsTile, new TileData(0.1)));
-        allGameTiles.Add(new TileBlueprint(new Color32(255, 191, 0, 1), GameTileSprites.SandTile, new TileData(0.1)));
-        allGameTiles.Add(new TileBlueprint(new Color32(158, 236, 219, 1), GameTileSprites.SnowTile, new TileData(0.1)));
-        allGameTiles.Add(new TileBlueprint(new Color32(90, 90, 90, 1), GameTileSprites.MountainsTile, new TileData(0.15)));
-        allGameTiles.Add(new TileBlueprint(new Color32(107, 206, 50, 1), GameTileSprites.PlainsTile, new TileData(0.7)));
-        allGameTiles.Add(new TileBlueprint(new Color32(178, 136, 117, 1), GameTileSprites.HillsTile, new TileData(0.4)));
-        allGameTiles.Add(new TileBlueprint(new Color32(19, 44, 105, 1), GameTileSprites.DeepWaterTile, new TileData(0.0)));
-        allGameTiles.Add(new TileBlueprint(new Color32(66, 131, 191, 1), GameTileSprites.WaterTile, new TileData(0.0)));
-        allGameTiles.Add(new TileBlueprint(new Color32(204, 242, 255, 1), GameTileSprites.ShallowWaterTile, new TileData(0.0)));
-        allGameTiles.Add(new TileBlueprint(new Color32(36, 96, 22, 1), GameTileSprites.ForestTile, new TileData(0.4)));
-        
+        allGameTiles.Add(new TileBlueprint(new Color32(96, 31, 31, 1), GameTileSprites.MudLandsTile, new TileData(TileID.MUD_LANDS, 0.1)));
+        allGameTiles.Add(new TileBlueprint(new Color32(255, 191, 0, 1), GameTileSprites.SandTile, new TileData(TileID.SAND, 0.1)));
+        allGameTiles.Add(new TileBlueprint(new Color32(158, 236, 219, 1), GameTileSprites.SnowTile, new TileData(TileID.SNOW, 0.1)));
+        allGameTiles.Add(new TileBlueprint(new Color32(90, 90, 90, 1), GameTileSprites.MountainsTile, new TileData(TileID.MOUNTAINS, 0.15)));
+        allGameTiles.Add(new TileBlueprint(new Color32(107, 206, 50, 1), GameTileSprites.PlainsTile, new TileData(TileID.PLAINS, 0.7)));
+        allGameTiles.Add(new TileBlueprint(new Color32(178, 136, 117, 1), GameTileSprites.HillsTile, new TileData(TileID.HILLS, 0.4)));
+        allGameTiles.Add(new TileBlueprint(new Color32(19, 44, 105, 1), GameTileSprites.DeepWaterTile, new TileData(TileID.DEEP_WATER, 0.0)));
+        allGameTiles.Add(new TileBlueprint(new Color32(66, 131, 191, 1), GameTileSprites.WaterTile, new TileData(TileID.WATER, 0.0)));
+        allGameTiles.Add(new TileBlueprint(new Color32(204, 242, 255, 1), GameTileSprites.ShallowWaterTile, new TileData(TileID.SHALLOW_WATER, 0.0)));
+        allGameTiles.Add(new TileBlueprint(new Color32(36, 96, 22, 1), GameTileSprites.ForestTile, new TileData(TileID.FOREST, 0.4)));
     }
 
     public static bool ContainsColor(Color color)
@@ -527,6 +585,51 @@ public static class ColorUtility
 
 }
 
+public enum Direction
+{
+    NORTH,
+    NORTH_EAST,
+    EAST,
+    SOUTH_EAST,
+    SOUTH,
+    NORTH_WEST,
+    WEST,
+    SOUTH_WEST
+}
+
+public static class DirectionExtension
+{
+
+    public static Vector2Int DirectionToVector(this Direction direction)
+    {
+
+        switch (direction)
+        {
+            case Direction.NORTH:
+                return new Vector2Int(0, 1);
+            case Direction.NORTH_EAST:
+                return new Vector2Int(1, 1);
+            case Direction.EAST:
+                return new Vector2Int(1, 0);
+            case Direction.SOUTH_EAST:
+                return new Vector2Int(1, -1);
+            case Direction.SOUTH:
+                return new Vector2Int(0, -1);
+            case Direction.SOUTH_WEST:
+                return new Vector2Int(-1, -1);
+            case Direction.WEST:
+                return new Vector2Int(-1, 0);
+            case Direction.NORTH_WEST:
+                return new Vector2Int(-1, 1);
+            default:
+                Debug.LogError(nameof(DirectionToVector) + ": assertion failed. Default code block reached.");
+                return Vector2Int.zero;
+        }
+
+    }
+
+}
+
 public class Tile
 {
 
@@ -536,11 +639,22 @@ public class Tile
         set;
     }
 
-
 }
 
 public struct TileData
 {
+
+    public Vector2Int Position
+    {
+        get;
+        set;
+    }
+
+    public TileID _TileID
+    {
+        get;
+        set;
+    }
 
     public long Population
     {
@@ -560,14 +674,10 @@ public struct TileData
         set;
     }
 
-    public TileData(double BaseHospitability)
+    public TileData(TileID _TileID, double BaseHospitability) : this()
     {
-        tileCountry = null;
-        Population = 0L;
-
+        this._TileID = _TileID;
         this.BaseHospitability = BaseHospitability;
-
-
     }
 
 
