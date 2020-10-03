@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+
+<ProvinceDatabase xmlns="">
+
+  <Provinces>
+
+    <Province>
+      <Name>"Western Mountains"</Name>
+      <ProvinceID>TESTING</ProvinceID>
+      <TerrainType>MOUNTAINS</TerrainType>
+      <SerializableColor32>
+        <r>107</r>
+        <g>206</g>
+        <b>50</b>
+        <a>255</a>
+      </SerializableColor32>
+    </Province>
+
+    <Province>
+      <Name>Dune Desert</Name>
+      <ProvinceID>TESTING</ProvinceID>
+      <TerrainType>SAND</TerrainType>
+      <SerializableColor32>
+        <r>96</r>
+        <g>31</g>
+        <b>31</b>
+        <a>255</a>
+      </SerializableColor32>
+    </Province>
+
+    <Province>
+      <Name>Snowsville</Name>
+      <ProvinceID>TESTING</ProvinceID>
+      <TerrainType>SNOW</TerrainType>
+      <SerializableColor32>
+        <r>66</r>
+        <g>131</g>
+        <b>191</b>
+        <a>255</a>
+      </SerializableColor32>
+    </Province>
+
+    <Province>
+      <Name>The Great White Plains</Name>
+      <ProvinceID>TESTING</ProvinceID>
+      <TerrainType>PLAINS</TerrainType>
+      <SerializableColor32>
+        <r>158</r>
+        <g>236</g>
+        <b>219</b>
+        <a>255</a>
+      </SerializableColor32>
+    </Province>
+
+    <Province>
+      <Name>The Forest</Name>
+      <ProvinceID>TESTING</ProvinceID>
+      <TerrainType>FOREST</TerrainType>
+      <SerializableColor32>
+        <r>19</r>
+        <g>44</g>
+        <b>105</b>
+        <a>255</a>
+      </SerializableColor32>
+    </Province>
+  </Provinces>
+
+</ProvinceDatabase>

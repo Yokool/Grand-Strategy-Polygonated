@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<CountryDatabase>
+  <Countries>
+    <Country>
+      <CountryName>John</CountryName>
+      <CountryID>JOHN</CountryID>
+    </Country>
+  </Countries>
+</CountryDatabase>

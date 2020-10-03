@@ -3,6 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.Serialization;
+using System.Xml;
+using System.Xml.Serialization;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
@@ -20,668 +23,294 @@ public class GameWorld : MonoBehaviour
     private Tilemap terrainTilemap;
     private TilemapRenderer terrainTilemapRenderer;
 
-
-    private Tile[,] tilesByLoc;
-
-    private int worldWidth;
-    private int worldHeight;
-
-    public Tile GetTileByLoc(int x, int y)
-    {
-        return tilesByLoc[x, y];
-    }
-
-    public Tile GetTileByLoc(Vector2Int position)
-    {
-        return tilesByLoc[position.x, position.y];
-    }
-
-    public void IteratorOverWorldTiles(Action<Tile, int, int> consumer)
-    {
-        
-        for(int y = 0; y < worldHeight; ++y)
-        {
-            for(int x = 0; x < worldWidth; ++x)
-            {
-                consumer(GetTileByLoc(x,y), x, y);
-            }
-        }
-
-    }
-
+    private static string pathToProvinceMap = @"C:\Users\ederm\Desktop\eee.png";
 
     private void Awake()
     {
-
-        if (instance != null)
-        {
-            Debug.LogWarning("Tried to create a second instance of BitmapPolygonConverter.");
-            Destroy(gameObject);
-            return;
-        }
-
         terrainTilemap = GetComponent<Tilemap>();
         terrainTilemapRenderer = GetComponent<TilemapRenderer>();
-
-        instance = this;
-
-        // TODO: CHANGE
-        CreateWorld(new FileInfo(@"C:\Users\ederm\Desktop\f.png"), new FileInfo(@"C:\Users\ederm\Desktop\e.png"));
-
+        CreateProvinces();
     }
 
-    
-    private void CreateWorld(FileInfo terrainMapFile, FileInfo countryMapFile)
+    private void CreateProvinces()
     {
+        FileInfo provinceMap = new FileInfo(pathToProvinceMap);
+        Texture2D provinceMapT2D = GameTexture2DUtility.FileToT2D(provinceMap);
 
-        Texture2D terrainMapT2D = GameTexture2DUtility.FileToT2D(terrainMapFile);
-
-        worldWidth = terrainMapT2D.width;
-        worldHeight = terrainMapT2D.height;
-
-        Texture2D countryMapT2D = GameTexture2DUtility.FileToT2D(countryMapFile);
-
-        if(!ValidateDimensions(countryMapT2D))
+        for(int y = 0; y < provinceMapT2D.height; ++y)
         {
-            Debug.LogError("Country map has different dimensions than those which have been set by the terrain map.");
-            return;
-        }
-
-        InitializeTerrainTilemap(terrainMapT2D);
-        InitializeCountryTilemap(countryMapT2D);
-        CalculateHospitability();
-        PopulateTiles();
-        /*
-        for(int y = 0; y < worldHeight; ++y)
-        {
-            for(int x = 0; x < worldWidth; ++x)
+            for (int x = 0; x < provinceMapT2D.width; ++x)
             {
-                TileBase tileSprite = terrainTilemap.GetTile(new Vector3Int(x, y, 0));
 
-                TileData tileData = GetTileByLoc(x, y).TileData;
-                Country tileCountry = tileData.tileCountry;
+                Color32 pixelColor = provinceMapT2D.GetPixel(x, y);
 
-                if(tileCountry == null)
+                // TODO: PERFORMACE
+                foreach(Province province in ProvinceDatabase.INSTANCE.Provinces)
                 {
-                    continue;
+                    Color32 provincePixelColor = province.PixelColor;
+
+                    if(!ColorUtility.ColorEquals(pixelColor, provincePixelColor))
+                    {
+                        continue;
+                    }
+
+                    Vector3Int tilePosition = new Vector3Int(x, y, 0);
+
+                    terrainTilemap.SetTile(tilePosition, GameTileSprites.GetSpriteFromTileID(province.TerrainType));
+
+
                 }
 
-                long population = tileData.Population;
-                Debug.Log(population);
-
-                terrainTilemap.SetTileFlags(new Vector3Int(x, y, 0), TileFlags.None);
-                //terrainTilemap.SetColor(new Vector3Int(x, y, 0), Color32.Lerp(Color.black, Color.white, (float)population / (float)tileCountry.Population));
-                terrainTilemap.SetColor(new Vector3Int(x, y, 0), Color.red);
-            }
-        }
-        */
-    }
-
-    private void CalculateHospitability()
-    {
-
-        Dictionary<Vector2Int, int> savedHospitability = new Dictionary<Vector2Int, int>(); 
-
-        IteratorOverWorldTiles((tile, x, y) => {
-
-            TileData TD = tile.TileData;
-
-            Tile N = GetTileRelative(tile, Direction.NORTH);
-            Tile E = GetTileRelative(tile, Direction.EAST);
-            Tile S = GetTileRelative(tile, Direction.SOUTH);
-            Tile W = GetTileRelative(tile, Direction.WEST);
-
-            TileData N_TD = N.TileData;
-            TileData E_TD = E.TileData;
-            TileData S_TD = S.TileData;
-            TileData W_TD = W.TileData;
-
-            if (TD._TileID.Equals(N_TD._TileID))
-            {
-
-            }
-
-
-
-
-        });
-    }
-
-    public Tile GetTileRelative(Tile tile, Direction direction)
-    {
-
-        Vector2Int tilePosition = tile.TileData.Position;
-        Vector2Int directionToRelativePosition = direction.DirectionToVector();
-
-        return GetTileByLoc(tilePosition + directionToRelativePosition);
-
-    }
-
-    private void PopulateTiles()
-    {
-        GameCountriesDatabase.IterateOverAllCountries((country) => {
-
-            double hospitabilitySum = 0.0;
-            long totalPopulation = country.Population;
-
-            country.IterateOverCountryTiles((countryTile) => {
-                hospitabilitySum += countryTile.TileData.BaseHospitability;
-            });
-
-            country.IterateOverCountryTiles((countryTile) => {
-
-                TileData tileData = countryTile.TileData;
-                tileData.Population = (long)(totalPopulation * (tileData.BaseHospitability / hospitabilitySum));
-                countryTile.TileData = tileData;
-            });
-
-        });
-    }
-
-    private bool ValidateDimensions(Texture2D t2d)
-    {
-        return (t2d.width == worldWidth) && (t2d.height == worldHeight);
-    }
-
-    private void InitializeTerrainTilemap(Texture2D terrainMapT2D)
-    {
-
-        CreateTileLocArrayByDimension(terrainMapT2D.width, terrainMapT2D.height);
-
-        for (int y = 0; y < terrainMapT2D.height; ++y)
-        {
-            for (int x = 0; x < terrainMapT2D.width; ++x)
-            {
-
-                Color32 pixelColor = terrainMapT2D.GetPixel(x, y);
-
-
-                if (GameTileDatabase.ContainsColor(pixelColor))
-                {
-                    CreateTerrainTile(x, y, pixelColor);
-                }
-
-
             }
         }
 
     }
 
-    private void InitializeCountryTilemap(Texture2D countryMapT2D)
-    {
-        Color transparent = new Color32(0, 0, 0, 1);
-
-        GameTexture2DUtility.IterateOverT2D(countryMapT2D, (texture2D, pixelColor, x, y) => {
-
-            if(ColorUtility.ColorEquals(transparent, pixelColor))
-            {
-                return;
-            }
-
-            if (!GameCountriesDatabase.ContainsColorKey(pixelColor))
-            {
-                Debug.LogError("Country database doesn't have a country with the key of RGB values: " + pixelColor);
-                return;
-            }
 
 
-            Tile tile = GetTileByLoc(x, y);
-            TileData tileData = tile.TileData;
-            Country country = GameCountriesDatabase.TryGetCountryByColorKey(pixelColor);
-            tileData.tileCountry = country;
-
-            country.AddTile(tile);
-
-            tile.TileData = tileData;
-
-            
-
-
-            
-
-        });
-
-    }
-
-    private Tile CreateTerrainTile(int x, int y, Color pixelColor)
-    {
-        TileBlueprint tileBlueprint = GameTileDatabase.GetBlueprintByColor(pixelColor);
-        TileBase tileBaseSpriteFromBlueprint = tileBlueprint.AssociatedTileSprite;
-
-        Vector3Int tilePosition = new Vector3Int(x, y, 0);
-
-        terrainTilemap.SetTile(tilePosition, tileBaseSpriteFromBlueprint);
-
-        Tile tile = new Tile();
-        tilesByLoc[x, y] = tile;
-
-        tile.TileData = tileBlueprint.TileData;
-
-
-        TileData tileData = tile.TileData;
-        tileData.Position = new Vector2Int(x, y);
-        tile.TileData = tileData;
-
-        return tile;
-
-    }
-
-    private void CreateTileLocArrayByDimension(int width, int height)
-    {
-        tilesByLoc = new Tile[width, height];
-    }
 
 
 }
 
-public enum TileID
-{
-    MUD_LANDS,
-    SAND,
-    SNOW,
-    MOUNTAINS,
-    PLAINS,
-    HILLS,
-    DEEP_WATER,
-    WATER,
-    SHALLOW_WATER,
-    FOREST
-}
-
-public static class GameTileDatabase
+public static class CountryDeserializer
 {
 
-    private static List<TileBlueprint> allGameTiles = new List<TileBlueprint>();
-    public static List<TileBlueprint> AllGameTiles => allGameTiles;
+    private static string countryXMLPath = Application.dataPath + @"\countries.xml";
 
-    public static void _Initialize()
+    public static void _Init()
     {
-        allGameTiles.Add(new TileBlueprint(new Color32(96, 31, 31, 1), GameTileSprites.MudLandsTile, new TileData(TileID.MUD_LANDS, 0.1)));
-        allGameTiles.Add(new TileBlueprint(new Color32(255, 191, 0, 1), GameTileSprites.SandTile, new TileData(TileID.SAND, 0.1)));
-        allGameTiles.Add(new TileBlueprint(new Color32(158, 236, 219, 1), GameTileSprites.SnowTile, new TileData(TileID.SNOW, 0.1)));
-        allGameTiles.Add(new TileBlueprint(new Color32(90, 90, 90, 1), GameTileSprites.MountainsTile, new TileData(TileID.MOUNTAINS, 0.15)));
-        allGameTiles.Add(new TileBlueprint(new Color32(107, 206, 50, 1), GameTileSprites.PlainsTile, new TileData(TileID.PLAINS, 0.7)));
-        allGameTiles.Add(new TileBlueprint(new Color32(178, 136, 117, 1), GameTileSprites.HillsTile, new TileData(TileID.HILLS, 0.4)));
-        allGameTiles.Add(new TileBlueprint(new Color32(19, 44, 105, 1), GameTileSprites.DeepWaterTile, new TileData(TileID.DEEP_WATER, 0.0)));
-        allGameTiles.Add(new TileBlueprint(new Color32(66, 131, 191, 1), GameTileSprites.WaterTile, new TileData(TileID.WATER, 0.0)));
-        allGameTiles.Add(new TileBlueprint(new Color32(204, 242, 255, 1), GameTileSprites.ShallowWaterTile, new TileData(TileID.SHALLOW_WATER, 0.0)));
-        allGameTiles.Add(new TileBlueprint(new Color32(36, 96, 22, 1), GameTileSprites.ForestTile, new TileData(TileID.FOREST, 0.4)));
+        LoadCountries();
     }
 
-    public static bool ContainsColor(Color color)
+    private static void LoadCountries()
     {
+        DataContractSerializer countrySerializer = new DataContractSerializer(typeof(CountryDatabase));
 
-        for(int i = 0; i < AllGameTiles.Count; ++i)
-        {
-            TileBlueprint tileBlueprint = allGameTiles[i];
-            if (ColorUtility.ColorEquals(color, tileBlueprint.ImageColor))
-            {
-                return true;
-            }
-
-        }
-
-        return false;
-
+        byte[] buffer = File.ReadAllBytes(countryXMLPath);
+        
+        XmlDictionaryReader xmlDictionaryReader = XmlDictionaryReader.CreateTextReader(buffer, XmlDictionaryReaderQuotas.Max);
+        CountryDatabase.INSTANCE = countrySerializer.ReadObject(xmlDictionaryReader) as CountryDatabase;
+        xmlDictionaryReader.Close();
+        Debug.Log(CountryDatabase.INSTANCE.GetCountries()[0].GetCountryName());
+        
     }
-
-    public static TileBlueprint GetBlueprintByColor(Color32 color)
-    {
-        for (int i = 0; i < AllGameTiles.Count; ++i)
-        {
-            TileBlueprint tileBlueprint = allGameTiles[i];
-            if (ColorUtility.ColorEquals(color, tileBlueprint.ImageColor))
-            {
-                return tileBlueprint;
-            }
-
-        }
-
-        return null;
-    }
-
 
 }
 
-public enum CountryIDs
-{
-    TESTING_COUNTRY = 0
-}
-
-public static class GameCountriesDatabase
+[Serializable]
+[DataContract(Name = "CountryDatabase", Namespace = "", IsReference = true)]
+public class CountryDatabase
 {
 
-    private static List<Country> countries = new List<Country>();
-    public static List<Country> Countries => countries;
-
-    public static void _Initialize()
+    private static CountryDatabase instance;
+    public static CountryDatabase INSTANCE
     {
-        countries.Add(new Country("Testing Country", CountryIDs.TESTING_COUNTRY, new Color32(255, 255, 255, 1), new Color32(255, 0, 0, 1), 10000000L));
-    }
-
-    public static void IterateOverAllCountries(Action<Country> consumer)
-    {
-
-        for(int i = 0; i < countries.Count; ++i)
+        get
         {
-            consumer(countries[i]);
+            return instance;
         }
-
-    }
-
-    public static Country GetCountry(CountryIDs ID)
-    {
-
-        for(int i = 0; i < countries.Count; ++i)
+        set
         {
-            Country country = countries[i];
-            if (country.ID.Equals(ID))
-            {
-                return country;
-            }
-            
+            instance = value;
         }
-
-        Debug.LogError("Country with ID: " + ID + " could not be found.");
-        return null;
-
     }
-
-    public static bool ContainsColorKey(Color color)
+    [DataMember(Name = "Countries", Order = 0)]
+    private List<Country> countries = new List<Country>();
+    public List<Country> GetCountries()
     {
-
-        for (int i = 0; i < countries.Count; ++i)
-        {
-            Country country = countries[i];
-            if (ColorUtility.ColorEquals(color, country.ColorKey))
-            {
-                return true;
-            }
-
-        }
-
-        return false;
-
+        return countries;
     }
 
-    public static Country TryGetCountryByColorKey(Color32 colorKey)
-    {
-        for (int i = 0; i < countries.Count; ++i)
-        {
-            Country country = countries[i];
-            if (ColorUtility.ColorEquals(colorKey, country.ColorKey))
-            {
-                return country;
-            }
 
-        }
-
-        return null;
-
-    }
 
 }
 
+[Serializable]
+[DataContract(Name = "Country", Namespace = "", IsReference = true)]
 public class Country
 {
-
-    private Color32 colorKey;
-    public Color32 ColorKey => colorKey;
-
-    private Color32 ingameColor;
-    public Color32 IngameColor => ingameColor;
-
-
+    [DataMember(Name = "CountryName", Order = 0)]
     private string countryName;
-    public string CountryName => countryName;
 
-    private CountryIDs id;
-    public CountryIDs ID => id;
+    [DataMember(Name = "CountryID", Order = 1)]
+    private CountryID countryID;
 
-    public long Population
-    {
-        get;
-        set;
-    }
-
-    private List<Tile> countryTiles = new List<Tile>();
-    
-    public void AddTile(Tile tile)
-    {
-        countryTiles.Add(tile);
-    }
-
-    public void IterateOverCountryTiles(Action<Tile> consumer)
-    {
-
-        for(int i = 0; i < countryTiles.Count; ++i)
-        {
-            consumer(countryTiles[i]);
-        }
-
-    }
-
-    public List<Tile> GetTiles()
-    {
-        return countryTiles;
-    }
-
-
-    public Country(string countryName, CountryIDs id, Color32 colorKey, Color32 ingameColor, long Population)
+    public void SetCountryName(string countryName)
     {
         this.countryName = countryName;
-        this.id = id;
-        this.colorKey = colorKey;
-        this.ingameColor = ingameColor;
-        this.Population = Population;
+    }
+
+    public string GetCountryName()
+    {
+        return countryName;
+    }
+
+    private List<Province> provinces = new List<Province>();
+
+    public List<Province> GetAllProvinces()
+    {
+        return provinces;
+    }
+
+    public void AddProvince(Province province)
+    {
+        provinces.Add(province);
     }
 
 }
 
-public class CustomPerlinNoise
+[Serializable]
+public enum CountryID
+{
+    JOHN
+}
+
+[Serializable]
+[DataContract(Name = "ProvinceDatabase", Namespace = "", IsReference = true)]
+public class ProvinceDatabase
+{
+    [DataMember(Name = "Provinces", Order = 0)]
+    public List<Province> Provinces
+    {
+        get;
+        set;
+    }
+    
+    public static ProvinceDatabase INSTANCE
+    {
+        get;
+        set;
+    }
+    [OnDeserialized]
+    private void OnDeserialization(StreamingContext streamingContext)
+    {
+        for (int i = 0; i < Provinces.Count; ++i)
+        {
+            Province province = Provinces[i];
+            province.PixelColor = province.SerializableColor32;
+        }
+    }
+
+}
+
+public static class ProvinceDeserializer
 {
 
+    private static string provinceFilePath = Application.dataPath + "\\provinces.xml";
 
-    private static readonly int[] permutation = new int[256]{ 151,160,137,91,90,15,
-    131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-    190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-    88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-    77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-    102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-    135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-    5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-    223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-    129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-    251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-    49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-    138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
-    };
-
-    public float PerlinNoise(float x, float y)
+    // Called when assemblies load
+    public static void _Init()
     {
+        LoadSerializedProvinces();
+    }
 
-        int cubeX = (int)x;
-        int cubeY = (int)y;
+    private static void LoadSerializedProvinces()
+    {
+        DataContractSerializer provinceSerializer = new DataContractSerializer(typeof(ProvinceDatabase));
 
-        float dX = x - cubeX;
-        float dY = y - cubeY;
+        byte[] buffer = File.ReadAllBytes(provinceFilePath);
 
 
-        Vector2Int locAA = new Vector2Int(cubeX, cubeY);
-        Vector2Int locBA = new Vector2Int(cubeX + 1, cubeY);
-        Vector2Int locAB = new Vector2Int(cubeX, cubeY + 1);
-        Vector2Int locBB = new Vector2Int(cubeX + 1, cubeY + 1);
-
-        int hashAA = permutation[permutation[((locAA.x % 256) + permutation[locAA.y % 256]) % 256]];
-        int hashBA = permutation[permutation[((locBA.x % 256) + permutation[locBA.y % 256]) % 256]];
-        int hashAB = permutation[permutation[((locAB.x % 256) + permutation[locAB.y % 256]) % 256]];
-        int hashBB = permutation[permutation[((locBB.x % 256) + permutation[locBB.y % 256]) % 256]];
-
-        Vector2 pseudoRandomVectorAA = GetRandomCornerVector(hashAA);
-        Vector2 pseudoRandomVectorBA = GetRandomCornerVector(hashBA);
-        Vector2 pseudoRandomVectorAB = GetRandomCornerVector(hashAB);
-        Vector2 pseudoRandomVectorBB = GetRandomCornerVector(hashBB);
-
-        Vector2 differenceVectorAA = new Vector2(x, y) - locAA;
-        Vector2 differenceVectorBA = new Vector2(x, y) - locBA;
-        Vector2 differenceVectorAB = new Vector2(x, y) - locAB;
-        Vector2 differenceVectorBB = new Vector2(x, y) - locBB;
+        XmlDictionaryReader xmlDictionaryReader = XmlDictionaryReader.CreateTextReader(buffer, XmlDictionaryReaderQuotas.Max);
+        ProvinceDatabase.INSTANCE = provinceSerializer.ReadObject(xmlDictionaryReader) as ProvinceDatabase;
+        xmlDictionaryReader.Close();
         
-        float dotAA = Vector2.Dot(differenceVectorAA, pseudoRandomVectorAA);
-        float dotBA = Vector2.Dot(differenceVectorBA, pseudoRandomVectorBA);
-        float dotAB = Vector2.Dot(differenceVectorAB, pseudoRandomVectorAB);
-        float dotBB = Vector2.Dot(differenceVectorBB, pseudoRandomVectorBB);
-
-        float lerpBottom = Mathf.Lerp(dotAA, dotBA, Fade(dX));
-        float lerpTop = Mathf.Lerp(dotAB, dotBB, Fade(dX));
-
-        float finalLerp = Mathf.Lerp(lerpBottom, lerpTop, Fade(dY));
-
-        return finalLerp;
-
     }
 
-    private static float Fade(float t)
-    {
-        return 6 * t * t * t * t * t - 15 * t * t * t * t + 10 * t * t * t;
-    }
+    
 
-    private Vector2 GetRandomCornerVector(int hash)
-    {
-        switch (hash % 8)
-        {
-            case 0:
-                return new Vector2(1f, 0f);
-            case 1:
-                return new Vector2(-1f, 0f);
-            case 2:
-                return new Vector2(0f, 1f);
-            case 3:
-                return new Vector2(0f, -1f);
-            case 4:
-                return new Vector2(1f, 1.41421356237f);
-            case 5:
-                return new Vector2(1f, -1.41421356237f);
-            case 6:
-                return new Vector2(-1f, 1.41421356237f);
-            case 7:
-                return new Vector2(-1f, -1.41421356237f);
-        }
-
-        Debug.Log("Something went wrong.");
-        return Vector2.zero;
-
-    }
 
 }
 
-public static class ColorUtility
+[Serializable]
+public enum ProvinceID
 {
-
-    public static bool ColorEquals(Color32 c1, Color32 c2)
-    {
-        return (c1.r == c2.r) && (c1.g == c2.g) && (c1.b == c2.b);
-    }
-
+    TESTING = 0
 }
 
-public enum Direction
+[Serializable]
+[DataContract(Name = "Province", Namespace = "", IsReference = true)]
+public class Province
 {
-    NORTH,
-    NORTH_EAST,
-    EAST,
-    SOUTH_EAST,
-    SOUTH,
-    NORTH_WEST,
-    WEST,
-    SOUTH_WEST
+    [DataMember(Name = "Name", Order = 0)]
+    public string Name
+    {
+        get;
+        set;
+    }
+
+    [DataMember(Name = "ProvinceID", Order = 1)]
+    public ProvinceID ProvinceID
+    {
+        get;
+        set;
+    }
+
+    [DataMember(Name = "TerrainType", Order = 2)]
+    public TerrainType TerrainType
+    {
+        get;
+        set;
+    }
+
+    [DataMember(Name = "SerializableColor32", Order = 3)]
+    private SerializableColor32 serializableColor32;
+    public SerializableColor32 SerializableColor32 => serializableColor32;
+
+    
+
+    public Color32 PixelColor
+    {
+        get;
+        set;
+    }
+
+
+    
+
+    
+
 }
 
-public static class DirectionExtension
+[Serializable]
+[DataContract(Name = "SerializableColor32", Namespace = "", IsReference = true)]
+public class SerializableColor32
 {
-
-    public static Vector2Int DirectionToVector(this Direction direction)
+    [DataMember(Name = "r", Order = 0)]
+    public byte r
     {
+        get;
+        set;
+    }
 
-        switch (direction)
-        {
-            case Direction.NORTH:
-                return new Vector2Int(0, 1);
-            case Direction.NORTH_EAST:
-                return new Vector2Int(1, 1);
-            case Direction.EAST:
-                return new Vector2Int(1, 0);
-            case Direction.SOUTH_EAST:
-                return new Vector2Int(1, -1);
-            case Direction.SOUTH:
-                return new Vector2Int(0, -1);
-            case Direction.SOUTH_WEST:
-                return new Vector2Int(-1, -1);
-            case Direction.WEST:
-                return new Vector2Int(-1, 0);
-            case Direction.NORTH_WEST:
-                return new Vector2Int(-1, 1);
-            default:
-                Debug.LogError(nameof(DirectionToVector) + ": assertion failed. Default code block reached.");
-                return Vector2Int.zero;
-        }
+    [DataMember(Name = "g", Order = 1)]
+    public byte g
+    {
+        get;
+        set;
+    }
 
+    [DataMember(Name = "b", Order = 2)]
+    public byte b
+    {
+        get;
+        set;
+    }
+
+    [DataMember(Name = "a", Order = 3)]
+    public byte a
+    {
+        get;
+        set;
+    }
+
+    public static implicit operator Color32(SerializableColor32 color)
+    {
+        return new Color32(color.r, color.g, color.b, color.a);
     }
 
 }
 
-public class Tile
-{
-
-    public TileData TileData
-    {
-        get;
-        set;
-    }
-
-}
-
-public struct TileData
-{
-
-    public Vector2Int Position
-    {
-        get;
-        set;
-    }
-
-    public TileID _TileID
-    {
-        get;
-        set;
-    }
-
-    public long Population
-    {
-        get;
-        set;
-    }
-
-    public double BaseHospitability
-    {
-        get;
-        set;
-    }
-
-    public Country tileCountry
-    {
-        get;
-        set;
-    }
-
-    public TileData(TileID _TileID, double BaseHospitability) : this()
-    {
-        this._TileID = _TileID;
-        this.BaseHospitability = BaseHospitability;
-    }
-
-
-}
 
 public static class MathL
 {
@@ -704,177 +333,28 @@ public static class MathL
 
 }
 
-public class TileBlueprint
+[Serializable]
+[XmlRoot(ElementName = "TerrainType")]
+public enum TerrainType
 {
-    public Color32 ImageColor
-    {
-        get;
-    }
-
-    public TileBase AssociatedTileSprite
-    {
-        get;
-    }
-
-    public TileData TileData
-    {
-        get;
-        set;
-    }
-
-    public TileBlueprint(Color32 ImageColor, TileBase AssociatedTileSprite, TileData TileData)
-    {
-        this.ImageColor = ImageColor;
-        this.AssociatedTileSprite = AssociatedTileSprite;
-        this.TileData = TileData;
-    }
-
-}
-
-public enum Goods
-{
-    GRAIN,
-    FRUIT
-}
-
-public static class GameTileSprites
-{
-
-
-    public static TileBase MudLandsTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase PlainsTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase SandTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase SnowTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase DeepWaterTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase WaterTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase ShallowWaterTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase HillsTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase MountainsTile
-    {
-        get;
-        private set;
-    }
-
-    public static TileBase ForestTile
-    {
-        get;
-        private set;
-    }
-
-    public static void _Load()
-    {
-
-        MudLandsTile = Resources.Load<TileBase>("WorldTiles/MudTile");
-        SnowTile = Resources.Load<TileBase>("WorldTiles/SnowTile");
-        MountainsTile = Resources.Load<TileBase>("WorldTiles/MountainsTile");
-        SandTile = Resources.Load<TileBase>("WorldTiles/SandTile");
-        PlainsTile = Resources.Load<TileBase>("WorldTiles/PlainsTile");
-        HillsTile = Resources.Load<TileBase>("WorldTiles/HillsTile");
-        ShallowWaterTile = Resources.Load<TileBase>("WorldTiles/ShallowWaterTile");
-        WaterTile = Resources.Load<TileBase>("WorldTiles/WaterTile");
-        DeepWaterTile = Resources.Load<TileBase>("WorldTiles/DeepWaterTile");
-        ForestTile = Resources.Load<TileBase>("WorldTiles/ForestTile");
-
-    }
-
-}
-
-public static class OrderedRuntimeInitializer
-{
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterAssembliesLoaded)]
-    private static void AfterAssembliesLoaded()
-    {
-        GameTileSprites._Load();
-        GameTileDatabase._Initialize();
-        GameCountriesDatabase._Initialize();
-    }
-
-}
-
-
-public static class GameFileUtility
-{
-
-    public static byte[] ReadFile(FileInfo fileInfo)
-    {
-        FileStream fileStream = fileInfo.OpenRead();
-
-        byte[] data = new byte[fileStream.Length];
-
-        fileStream.Read(data, 0, data.Length);
-
-        fileStream.Close();
-
-        return data;
-
-    }
-}
-
-public static class GameTexture2DUtility
-{
-
-    public static Texture2D FileToT2D(FileInfo fileInfo)
-    {
-        Texture2D texture2D = new Texture2D(0, 0);
-
-        texture2D.LoadImage(GameFileUtility.ReadFile(fileInfo));
-
-        return texture2D;
-    }
-
-    public static void IterateOverT2D(Texture2D texture2D, Action<Texture2D, Color32, int, int> consumer)
-    {
-        int height = texture2D.height;
-        int width = texture2D.width;
-
-        for (int y = 0; y < height; ++y)
-        {
-            for(int x = 0; x < width; ++x)
-            {
-                consumer(texture2D, texture2D.GetPixel(x, y), x, y);
-            }
-        }
-
-    }
-
+    [XmlEnum(Name = "MUD_LANDS")]
+    MUD_LANDS,
+    [XmlEnum(Name = "SAND")]
+    SAND,
+    [XmlEnum(Name = "SNOW")]
+    SNOW,
+    [XmlEnum(Name = "MOUNTAINS")]
+    MOUNTAINS,
+    [XmlEnum(Name = "PLAINS")]
+    PLAINS,
+    [XmlEnum(Name = "HILLS")]
+    HILLS,
+    [XmlEnum(Name = "DEEP_WATER")]
+    DEEP_WATER,
+    [XmlEnum(Name = "WATER")]
+    WATER,
+    [XmlEnum(Name = "SHALLOW_WATER")]
+    SHALLOW_WATER,
+    [XmlEnum(Name = "FOREST")]
+    FOREST
 }
