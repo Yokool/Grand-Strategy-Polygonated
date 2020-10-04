@@ -5,9 +5,9 @@
   <Provinces>
 
     <Province>
-      <Name>"Western Mountains"</Name>
-      <ProvinceID>TESTING</ProvinceID>
+      <ProvinceID>TESTING_1</ProvinceID>
       <TerrainType>MOUNTAINS</TerrainType>
+      <ProvinceOwner>JOHN</ProvinceOwner>
       <SerializableColor32>
         <r>107</r>
         <g>206</g>
@@ -17,9 +17,9 @@
     </Province>
 
     <Province>
-      <Name>Dune Desert</Name>
-      <ProvinceID>TESTING</ProvinceID>
+      <ProvinceID>TESTING_2</ProvinceID>
       <TerrainType>SAND</TerrainType>
+      <ProvinceOwner>JOHN</ProvinceOwner>
       <SerializableColor32>
         <r>96</r>
         <g>31</g>
@@ -29,9 +29,9 @@
     </Province>
 
     <Province>
-      <Name>Snowsville</Name>
-      <ProvinceID>TESTING</ProvinceID>
+      <ProvinceID>TESTING_3</ProvinceID>
       <TerrainType>SNOW</TerrainType>
+      <ProvinceOwner>JOHN</ProvinceOwner>
       <SerializableColor32>
         <r>66</r>
         <g>131</g>
@@ -41,9 +41,9 @@
     </Province>
 
     <Province>
-      <Name>The Great White Plains</Name>
-      <ProvinceID>TESTING</ProvinceID>
+      <ProvinceID>TESTING_4</ProvinceID>
       <TerrainType>PLAINS</TerrainType>
+      <ProvinceOwner>JOHN</ProvinceOwner>
       <SerializableColor32>
         <r>158</r>
         <g>236</g>
@@ -53,9 +53,9 @@
     </Province>
 
     <Province>
-      <Name>The Forest</Name>
-      <ProvinceID>TESTING</ProvinceID>
+      <ProvinceID>TESTING_5</ProvinceID>
       <TerrainType>FOREST</TerrainType>
+      <ProvinceOwner>JOHN</ProvinceOwner>
       <SerializableColor32>
         <r>19</r>
         <g>44</g>

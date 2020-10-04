@@ -67,9 +67,9 @@
     <Compile Include="Assets\Resources\Scripts\GameWorld\CameraDrag.cs" />
     <Compile Include="Assets\Resources\Scripts\GameWorld\OrderedRuntimeInitializer.cs" />
     <Compile Include="Assets\Resources\Scripts\GameWorld\DirectionExtension.cs" />
+    <Compile Include="Assets\Resources\Scripts\GameWorld\MathL.cs" />
   </ItemGroup>
   <ItemGroup>
-     <None Include="Assets\provincesTwo.xml" />
      <None Include="Assets\countries.xml" />
      <None Include="Assets\provinces.xml" />
     <Reference Include="UnityEngine">

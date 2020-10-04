@@ -45,7 +45,7 @@ public class GameWorld : MonoBehaviour
                 Color32 pixelColor = provinceMapT2D.GetPixel(x, y);
 
                 // TODO: PERFORMACE
-                foreach(Province province in ProvinceDatabase.INSTANCE.Provinces)
+                foreach(Province province in ProvinceManager.INSTANCE.Provinces)
                 {
                     Color32 provincePixelColor = province.PixelColor;
 
@@ -56,7 +56,7 @@ public class GameWorld : MonoBehaviour
 
                     Vector3Int tilePosition = new Vector3Int(x, y, 0);
 
-                    terrainTilemap.SetTile(tilePosition, GameTileSprites.GetSpriteFromTileID(province.TerrainType));
+                    terrainTilemap.SetTile(tilePosition, GameTileSprites.GetSpriteFromTileID(province.GetTerrainType()));
 
 
                 }
@@ -80,30 +80,31 @@ public static class CountryDeserializer
     public static void _Init()
     {
         LoadCountries();
+        ProvinceManager.INSTANCE.RefreshNReassignAllProvinceOwners();
     }
 
     private static void LoadCountries()
     {
-        DataContractSerializer countrySerializer = new DataContractSerializer(typeof(CountryDatabase));
+        DataContractSerializer countrySerializer = new DataContractSerializer(typeof(CountryManager));
 
         byte[] buffer = File.ReadAllBytes(countryXMLPath);
         
         XmlDictionaryReader xmlDictionaryReader = XmlDictionaryReader.CreateTextReader(buffer, XmlDictionaryReaderQuotas.Max);
-        CountryDatabase.INSTANCE = countrySerializer.ReadObject(xmlDictionaryReader) as CountryDatabase;
+        CountryManager.INSTANCE = countrySerializer.ReadObject(xmlDictionaryReader) as CountryManager;
         xmlDictionaryReader.Close();
-        Debug.Log(CountryDatabase.INSTANCE.GetCountries()[0].GetCountryName());
         
     }
+
 
 }
 
 [Serializable]
 [DataContract(Name = "CountryDatabase", Namespace = "", IsReference = true)]
-public class CountryDatabase
+public class CountryManager
 {
 
-    private static CountryDatabase instance;
-    public static CountryDatabase INSTANCE
+    private static CountryManager instance;
+    public static CountryManager INSTANCE
     {
         get
         {
@@ -114,12 +115,40 @@ public class CountryDatabase
             instance = value;
         }
     }
+
+
+    private Dictionary<CountryID, Country> idToCountry;
+
     [DataMember(Name = "Countries", Order = 0)]
     private List<Country> countries = new List<Country>();
+
     public List<Country> GetCountries()
     {
         return countries;
     }
+
+    [OnDeserialized]
+    private void OnDeserialized(StreamingContext streamingContext)
+    {
+        InitializeIDToCountryDictionary();
+    }
+
+    private void InitializeIDToCountryDictionary()
+    {
+        idToCountry = new Dictionary<CountryID, Country>();
+        for (int i = 0; i < countries.Count; ++i)
+        {
+            Country country = countries[i];
+            idToCountry[country.GetCountryID()] = country;
+        }
+    }
+
+    public Country GetCountry(CountryID countryID)
+    {
+        return idToCountry[countryID];
+    }
+
+
 
 
 
@@ -134,6 +163,16 @@ public class Country
 
     [DataMember(Name = "CountryID", Order = 1)]
     private CountryID countryID;
+
+    public CountryID GetCountryID()
+    {
+        return countryID;
+    }
+
+    public void SetCountryID(CountryID countryID)
+    {
+        this.countryID = countryID;
+    }
 
     public void SetCountryName(string countryName)
     {
@@ -160,14 +199,16 @@ public class Country
 }
 
 [Serializable]
+[DataContract(Name = "CountryID", Namespace = "")]
 public enum CountryID
 {
-    JOHN
+    [EnumMember(Value = "JOHN")]
+    JOHN = 0
 }
 
 [Serializable]
 [DataContract(Name = "ProvinceDatabase", Namespace = "", IsReference = true)]
-public class ProvinceDatabase
+public class ProvinceManager
 {
     [DataMember(Name = "Provinces", Order = 0)]
     public List<Province> Provinces
@@ -176,11 +217,12 @@ public class ProvinceDatabase
         set;
     }
     
-    public static ProvinceDatabase INSTANCE
+    public static ProvinceManager INSTANCE
     {
         get;
         set;
     }
+
     [OnDeserialized]
     private void OnDeserialization(StreamingContext streamingContext)
     {
@@ -188,6 +230,14 @@ public class ProvinceDatabase
         {
             Province province = Provinces[i];
             province.PixelColor = province.SerializableColor32;
+        }
+    }
+
+    public void RefreshNReassignAllProvinceOwners()
+    {
+        for(int i = 0; i < Provinces.Count; ++i)
+        {
+            Provinces[i].RefreshProvinceOwner();
         }
     }
 
@@ -206,13 +256,13 @@ public static class ProvinceDeserializer
 
     private static void LoadSerializedProvinces()
     {
-        DataContractSerializer provinceSerializer = new DataContractSerializer(typeof(ProvinceDatabase));
+        DataContractSerializer provinceSerializer = new DataContractSerializer(typeof(ProvinceManager));
 
         byte[] buffer = File.ReadAllBytes(provinceFilePath);
 
 
         XmlDictionaryReader xmlDictionaryReader = XmlDictionaryReader.CreateTextReader(buffer, XmlDictionaryReaderQuotas.Max);
-        ProvinceDatabase.INSTANCE = provinceSerializer.ReadObject(xmlDictionaryReader) as ProvinceDatabase;
+        ProvinceManager.INSTANCE = provinceSerializer.ReadObject(xmlDictionaryReader) as ProvinceManager;
         xmlDictionaryReader.Close();
         
     }
@@ -225,39 +275,39 @@ public static class ProvinceDeserializer
 [Serializable]
 public enum ProvinceID
 {
-    TESTING = 0
+    TESTING = 0,
+    TESTING_1 = 1,
+    TESTING_2 = 2,
+    TESTING_3 = 3,
+    TESTING_4 = 4,
+    TESTING_5 = 5,
 }
 
 [Serializable]
 [DataContract(Name = "Province", Namespace = "", IsReference = true)]
 public class Province
 {
-    [DataMember(Name = "Name", Order = 0)]
-    public string Name
-    {
-        get;
-        set;
-    }
 
+    private string provinceName = "";
+    
     [DataMember(Name = "ProvinceID", Order = 1)]
-    public ProvinceID ProvinceID
-    {
-        get;
-        set;
-    }
+    private ProvinceID provinceID;
 
     [DataMember(Name = "TerrainType", Order = 2)]
-    public TerrainType TerrainType
-    {
-        get;
-        set;
-    }
+    private TerrainType terrainType;
 
-    [DataMember(Name = "SerializableColor32", Order = 3)]
+
+    [DataMember(Name = "ProvinceOwner", Order = 3)]
+    private CountryID provinceOwnerID;
+
+    [DataMember(Name = "SerializableColor32", Order = 4)]
     private SerializableColor32 serializableColor32;
     public SerializableColor32 SerializableColor32 => serializableColor32;
 
-    
+    public void RefreshProvinceOwner()
+    {
+        SetProvinceOwner(CountryManager.INSTANCE.GetCountry(provinceOwnerID));
+    }
 
     public Color32 PixelColor
     {
@@ -265,11 +315,45 @@ public class Province
         set;
     }
 
+    public void SetProvinceID(ProvinceID provinceID)
+    {
+        this.provinceID = provinceID;
+    }
 
-    
+    public ProvinceID GetProvinceID()
+    {
+        return this.provinceID;
+    }
 
-    
+    public void SetTerrainType(TerrainType terrainType)
+    {
+        this.terrainType = terrainType;
+    }
 
+    public TerrainType GetTerrainType()
+    {
+        return this.terrainType;
+    }
+
+    public void SetProvinceName(string provinceName)
+    {
+        this.provinceName = provinceName;
+    }
+
+    public string GetProvinceName()
+    {
+        return this.provinceName;
+    }
+
+    public void SetProvinceOwner(CountryID countryID)
+    {
+        provinceOwnerID = countryID;
+    }
+
+    public void SetProvinceOwner(Country country)
+    {
+        SetProvinceOwner(country.GetCountryID());
+    }
 }
 
 [Serializable]
@@ -311,50 +395,28 @@ public class SerializableColor32
 
 }
 
-
-public static class MathL
-{
-
-    public static long ClampL(long value, long min, long max)
-    {
-
-        if(value > max)
-        {
-            value = max;
-        }
-        else if(value < min)
-        {
-            value = min;
-        }
-
-        return value;
-
-    }
-
-}
-
 [Serializable]
-[XmlRoot(ElementName = "TerrainType")]
+[DataContract(Name = "TerrainType", Namespace = "")]
 public enum TerrainType
 {
-    [XmlEnum(Name = "MUD_LANDS")]
+    [EnumMember(Value = "MUD_LANDS")]
     MUD_LANDS,
-    [XmlEnum(Name = "SAND")]
+    [EnumMember(Value = "SAND")]
     SAND,
-    [XmlEnum(Name = "SNOW")]
+    [EnumMember(Value = "SNOW")]
     SNOW,
-    [XmlEnum(Name = "MOUNTAINS")]
+    [EnumMember(Value = "MOUNTAINS")]
     MOUNTAINS,
-    [XmlEnum(Name = "PLAINS")]
+    [EnumMember(Value = "PLAINS")]
     PLAINS,
-    [XmlEnum(Name = "HILLS")]
+    [EnumMember(Value = "HILLS")]
     HILLS,
-    [XmlEnum(Name = "DEEP_WATER")]
+    [EnumMember(Value = "DEEP_WATER")]
     DEEP_WATER,
-    [XmlEnum(Name = "WATER")]
+    [EnumMember(Value = "WATER")]
     WATER,
-    [XmlEnum(Name = "SHALLOW_WATER")]
+    [EnumMember(Value = "SHALLOW_WATER")]
     SHALLOW_WATER,
-    [XmlEnum(Name = "FOREST")]
+    [EnumMember(Value = "FOREST")]
     FOREST
 }
