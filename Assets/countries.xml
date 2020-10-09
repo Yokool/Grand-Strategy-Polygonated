@@ -4,6 +4,7 @@
     <Country>
       <CountryName>John</CountryName>
       <CountryID>JOHN</CountryID>
+      <Population>950000</Population>
     </Country>
   </Countries>
 </CountryDatabase>

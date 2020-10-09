@@ -155,6 +155,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f86176b7b78b5994b84239180c86fe84, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  worldWidth: 500
+  worldHeight: 500
+  voronoiSeedCount: 4000
+  shiftNormalizationCount: 0
+  seedMinDistanceFromEachOther: 0
 --- !u!4 &326506647
 Transform:
   m_ObjectHideFlags: 0

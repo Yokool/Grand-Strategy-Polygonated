@@ -6,8 +6,7 @@ public static class OrderedRuntimeInitializer
     private static void AfterAssembliesLoaded()
     {
         GameTileSprites._Load();
-        ProvinceDeserializer._Init();
-        CountryDeserializer._Init();
+        TerrainTypeData._Init();
     }
 
 }

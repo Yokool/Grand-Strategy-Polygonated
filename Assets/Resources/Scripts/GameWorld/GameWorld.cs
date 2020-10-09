@@ -16,313 +16,175 @@ using UnityEngine.Tilemaps;
 public class GameWorld : MonoBehaviour
 {
 
-    private GameWorld instance;
-    public GameWorld INSTANCE => instance;
+    private static GameWorld instance;
+    public static GameWorld INSTANCE => instance;
 
 
     private Tilemap terrainTilemap;
     private TilemapRenderer terrainTilemapRenderer;
 
-    private static string pathToProvinceMap = @"C:\Users\ederm\Desktop\eee.png";
+    [SerializeField]
+    private int worldWidth;
+    [SerializeField]
+    private int worldHeight;
+
+    public int GetWorldWidth()
+    {
+        return worldWidth;
+    }
+
+    public int GetRealWorldWidth()
+    {
+        return worldWidth - 1;
+    }
+
+    public int GetWorldHeight()
+    {
+        return worldHeight;
+    }
+
+    public int GetRealWorldHeight()
+    {
+        return worldHeight - 1;
+    }
+
+    [SerializeField]
+    private int voronoiSeedCount;
+
+    [SerializeField]
+    private int shiftNormalizationCount;
+
+    [SerializeField]
+    private int seedMinDistanceFromEachOther;
 
     private void Awake()
     {
+        instance = this;
         terrainTilemap = GetComponent<Tilemap>();
         terrainTilemapRenderer = GetComponent<TilemapRenderer>();
-        CreateProvinces();
+        CreateWorld();
     }
 
-    private void CreateProvinces()
+    private void CreateWorld()
     {
-        FileInfo provinceMap = new FileInfo(pathToProvinceMap);
-        Texture2D provinceMapT2D = GameTexture2DUtility.FileToT2D(provinceMap);
+        List<VoronoiSeed> seeds = new List<VoronoiSeed>();
+        CreateProvinceBackground(seeds);
+        PushSeeds(seeds);
+        GenerateProvincesForVoronoiSeeds(seeds);
+        AssignIndividualTilesToProvinces(seeds);
+        GenerateWorldContent(seeds);
 
-        for(int y = 0; y < provinceMapT2D.height; ++y)
+    }
+
+    private void CreateProvinceBackground(List<VoronoiSeed> seeds)
+    {
+        //Debug.Log("Creating seeds");
+        for (int i = 0; i < voronoiSeedCount; ++i)
         {
-            for (int x = 0; x < provinceMapT2D.width; ++x)
+            int xLoc = UnityEngine.Random.Range(0, worldWidth);
+            int yLoc = UnityEngine.Random.Range(0, worldHeight);
+            seeds.Add(new VoronoiSeed(xLoc, yLoc));
+            //Debug.Log("Created a seed at location x: " + seeds[i].GetX() + " y: " + seeds[i].GetY());
+        }
+
+    }
+
+    private void PushSeeds(List<VoronoiSeed> seeds)
+    {
+        //Debug.Log("Pushing seeds");
+
+        for(int i = 0; i < shiftNormalizationCount; ++i)
+        {
+            for (int j = 0; j < voronoiSeedCount; ++j)
+            {
+                VoronoiSeed seed = seeds[j];
+                seed.PushAway(seeds, seedMinDistanceFromEachOther);
+            }
+        }
+
+    }
+
+    private void GenerateProvincesForVoronoiSeeds(List<VoronoiSeed> seeds)
+    {
+        ProvinceDirector cachedDirector = new ProvinceDirector();
+
+        for(int i = 0; i < voronoiSeedCount; ++i)
+        {
+            GenerateAProvinceForVoronoiSeed(cachedDirector, seeds[i]);
+        }
+
+        
+    }
+
+    private void GenerateAProvinceForVoronoiSeed(ProvinceDirector cachedDirector, VoronoiSeed seed)
+    {
+        Province generatedProvince = cachedDirector.GenerateRandomProvince();
+        seed.SetProvinceToGenerateFor(generatedProvince);
+    }
+
+
+    private void AssignIndividualTilesToProvinces(List<VoronoiSeed> seeds)
+    {
+
+        for(int y = 0; y < worldHeight; ++y)
+        {
+            for(int x = 0; x < worldWidth; ++x)
             {
 
-                Color32 pixelColor = provinceMapT2D.GetPixel(x, y);
+                int smallestDistance = int.MaxValue;
 
-                // TODO: PERFORMACE
-                foreach(Province province in ProvinceManager.INSTANCE.Provinces)
+                VoronoiSeed smallestDistanceSeed = null;
+
+                for(int i = 0; i < voronoiSeedCount; ++i)
                 {
-                    Color32 provincePixelColor = province.PixelColor;
+                    VoronoiSeed iteratedSeed = seeds[i];
 
-                    if(!ColorUtility.ColorEquals(pixelColor, provincePixelColor))
+                    int distance = Math.Max(Math.Abs(x - iteratedSeed.GetX()), Math.Abs(y - iteratedSeed.GetY()));
+
+                    if(distance < smallestDistance)
                     {
-                        continue;
+                        smallestDistance = distance;
+                        smallestDistanceSeed = iteratedSeed;
+                        smallestDistanceSeed.AddTileInDistance(new Vector2Int(x, y));
                     }
 
-                    Vector3Int tilePosition = new Vector3Int(x, y, 0);
-
-                    terrainTilemap.SetTile(tilePosition, GameTileSprites.GetSpriteFromTileID(province.GetTerrainType()));
-
-
                 }
+
 
             }
         }
 
     }
 
-
-
-
-
-}
-
-public static class CountryDeserializer
-{
-
-    private static string countryXMLPath = Application.dataPath + @"\countries.xml";
-
-    public static void _Init()
+    private void GenerateWorldContent(List<VoronoiSeed> seeds)
     {
-        LoadCountries();
-        ProvinceManager.INSTANCE.RefreshNReassignAllProvinceOwners();
-    }
 
-    private static void LoadCountries()
-    {
-        DataContractSerializer countrySerializer = new DataContractSerializer(typeof(CountryManager));
-
-        byte[] buffer = File.ReadAllBytes(countryXMLPath);
-        
-        XmlDictionaryReader xmlDictionaryReader = XmlDictionaryReader.CreateTextReader(buffer, XmlDictionaryReaderQuotas.Max);
-        CountryManager.INSTANCE = countrySerializer.ReadObject(xmlDictionaryReader) as CountryManager;
-        xmlDictionaryReader.Close();
-        
-    }
-
-
-}
-
-[Serializable]
-[DataContract(Name = "CountryDatabase", Namespace = "", IsReference = true)]
-public class CountryManager
-{
-
-    private static CountryManager instance;
-    public static CountryManager INSTANCE
-    {
-        get
+        for(int i = 0; i < voronoiSeedCount; ++i)
         {
-            return instance;
+            VoronoiSeed seed = seeds[i];
+            Province province = seed.GetProvinceToGenerateFor();
+            TerrainType provinceTerrainType = province.GetTerrainType();
+            List<Vector2Int> allTilesInDistance = seed.GetAllTilesInDistance();
+
+            for (int j = 0; j < allTilesInDistance.Count; ++j)
+            {
+                Vector2Int tileInDistance = allTilesInDistance[j];
+                terrainTilemap.SetTile(new Vector3Int(tileInDistance.x, tileInDistance.y, 0), GameTileSprites.GetSpriteFromTileID(provinceTerrainType));
+            }
+
         }
-        set
-        {
-            instance = value;
-        }
-    }
 
-
-    private Dictionary<CountryID, Country> idToCountry;
-
-    [DataMember(Name = "Countries", Order = 0)]
-    private List<Country> countries = new List<Country>();
-
-    public List<Country> GetCountries()
-    {
-        return countries;
-    }
-
-    [OnDeserialized]
-    private void OnDeserialized(StreamingContext streamingContext)
-    {
-        InitializeIDToCountryDictionary();
-    }
-
-    private void InitializeIDToCountryDictionary()
-    {
-        idToCountry = new Dictionary<CountryID, Country>();
-        for (int i = 0; i < countries.Count; ++i)
-        {
-            Country country = countries[i];
-            idToCountry[country.GetCountryID()] = country;
-        }
-    }
-
-    public Country GetCountry(CountryID countryID)
-    {
-        return idToCountry[countryID];
-    }
-
-
-
-
-
-}
-
-[Serializable]
-[DataContract(Name = "Country", Namespace = "", IsReference = true)]
-public class Country
-{
-    [DataMember(Name = "CountryName", Order = 0)]
-    private string countryName;
-
-    [DataMember(Name = "CountryID", Order = 1)]
-    private CountryID countryID;
-
-    public CountryID GetCountryID()
-    {
-        return countryID;
-    }
-
-    public void SetCountryID(CountryID countryID)
-    {
-        this.countryID = countryID;
-    }
-
-    public void SetCountryName(string countryName)
-    {
-        this.countryName = countryName;
-    }
-
-    public string GetCountryName()
-    {
-        return countryName;
-    }
-
-    private List<Province> provinces = new List<Province>();
-
-    public List<Province> GetAllProvinces()
-    {
-        return provinces;
-    }
-
-    public void AddProvince(Province province)
-    {
-        provinces.Add(province);
     }
 
 }
 
-[Serializable]
-[DataContract(Name = "CountryID", Namespace = "")]
-public enum CountryID
-{
-    [EnumMember(Value = "JOHN")]
-    JOHN = 0
-}
-
-[Serializable]
-[DataContract(Name = "ProvinceDatabase", Namespace = "", IsReference = true)]
-public class ProvinceManager
-{
-    [DataMember(Name = "Provinces", Order = 0)]
-    public List<Province> Provinces
-    {
-        get;
-        set;
-    }
-    
-    public static ProvinceManager INSTANCE
-    {
-        get;
-        set;
-    }
-
-    [OnDeserialized]
-    private void OnDeserialization(StreamingContext streamingContext)
-    {
-        for (int i = 0; i < Provinces.Count; ++i)
-        {
-            Province province = Provinces[i];
-            province.PixelColor = province.SerializableColor32;
-        }
-    }
-
-    public void RefreshNReassignAllProvinceOwners()
-    {
-        for(int i = 0; i < Provinces.Count; ++i)
-        {
-            Provinces[i].RefreshProvinceOwner();
-        }
-    }
-
-}
-
-public static class ProvinceDeserializer
-{
-
-    private static string provinceFilePath = Application.dataPath + "\\provinces.xml";
-
-    // Called when assemblies load
-    public static void _Init()
-    {
-        LoadSerializedProvinces();
-    }
-
-    private static void LoadSerializedProvinces()
-    {
-        DataContractSerializer provinceSerializer = new DataContractSerializer(typeof(ProvinceManager));
-
-        byte[] buffer = File.ReadAllBytes(provinceFilePath);
-
-
-        XmlDictionaryReader xmlDictionaryReader = XmlDictionaryReader.CreateTextReader(buffer, XmlDictionaryReaderQuotas.Max);
-        ProvinceManager.INSTANCE = provinceSerializer.ReadObject(xmlDictionaryReader) as ProvinceManager;
-        xmlDictionaryReader.Close();
-        
-    }
-
-    
-
-
-}
-
-[Serializable]
-public enum ProvinceID
-{
-    TESTING = 0,
-    TESTING_1 = 1,
-    TESTING_2 = 2,
-    TESTING_3 = 3,
-    TESTING_4 = 4,
-    TESTING_5 = 5,
-}
-
-[Serializable]
-[DataContract(Name = "Province", Namespace = "", IsReference = true)]
 public class Province
 {
 
-    private string provinceName = "";
-    
-    [DataMember(Name = "ProvinceID", Order = 1)]
-    private ProvinceID provinceID;
-
-    [DataMember(Name = "TerrainType", Order = 2)]
     private TerrainType terrainType;
-
-
-    [DataMember(Name = "ProvinceOwner", Order = 3)]
-    private CountryID provinceOwnerID;
-
-    [DataMember(Name = "SerializableColor32", Order = 4)]
-    private SerializableColor32 serializableColor32;
-    public SerializableColor32 SerializableColor32 => serializableColor32;
-
-    public void RefreshProvinceOwner()
+    public TerrainType GetTerrainType()
     {
-        SetProvinceOwner(CountryManager.INSTANCE.GetCountry(provinceOwnerID));
-    }
-
-    public Color32 PixelColor
-    {
-        get;
-        set;
-    }
-
-    public void SetProvinceID(ProvinceID provinceID)
-    {
-        this.provinceID = provinceID;
-    }
-
-    public ProvinceID GetProvinceID()
-    {
-        return this.provinceID;
+        return terrainType;
     }
 
     public void SetTerrainType(TerrainType terrainType)
@@ -330,93 +192,224 @@ public class Province
         this.terrainType = terrainType;
     }
 
-    public TerrainType GetTerrainType()
-    {
-        return this.terrainType;
-    }
-
-    public void SetProvinceName(string provinceName)
-    {
-        this.provinceName = provinceName;
-    }
-
-    public string GetProvinceName()
-    {
-        return this.provinceName;
-    }
-
-    public void SetProvinceOwner(CountryID countryID)
-    {
-        provinceOwnerID = countryID;
-    }
-
-    public void SetProvinceOwner(Country country)
-    {
-        SetProvinceOwner(country.GetCountryID());
-    }
 }
 
-[Serializable]
-[DataContract(Name = "SerializableColor32", Namespace = "", IsReference = true)]
-public class SerializableColor32
+public class ProvinceBuilder
 {
-    [DataMember(Name = "r", Order = 0)]
-    public byte r
+
+    private Province product;
+
+    public ProvinceBuilder()
     {
-        get;
-        set;
+        Reset();
     }
 
-    [DataMember(Name = "g", Order = 1)]
-    public byte g
+    private void Reset()
     {
-        get;
-        set;
+        product = new Province();
     }
 
-    [DataMember(Name = "b", Order = 2)]
-    public byte b
+    public Province GetProduct()
     {
-        get;
-        set;
+        Province result = product;
+        Reset();
+        return result;
     }
 
-    [DataMember(Name = "a", Order = 3)]
-    public byte a
+    public void BuildTerrainTypeRandomly()
     {
-        get;
-        set;
-    }
-
-    public static implicit operator Color32(SerializableColor32 color)
-    {
-        return new Color32(color.r, color.g, color.b, color.a);
+        product.SetTerrainType(EnumRandomGen.GenerateRandomEnum<TerrainType>());
     }
 
 }
 
-[Serializable]
-[DataContract(Name = "TerrainType", Namespace = "")]
+public class ProvinceDirector
+{
+    private ProvinceBuilder provinceBuilder;
+
+    public ProvinceDirector()
+    {
+        provinceBuilder = new ProvinceBuilder();
+    }
+
+    public Province GenerateRandomProvince()
+    {
+        provinceBuilder.BuildTerrainTypeRandomly();
+        return provinceBuilder.GetProduct();
+    }
+
+}
+
+public class VoronoiSeed
+{
+    private int x;
+    private int y;
+
+    private List<Vector2Int> tilesInDistance = new List<Vector2Int>();
+
+    public void AddTileInDistance(Vector2Int tileLoc)
+    {
+        tilesInDistance.Add(tileLoc);
+    }
+
+    public List<Vector2Int> GetAllTilesInDistance()
+    {
+        return tilesInDistance;
+    }
+
+
+    private Province provinceToGenerateFor;
+    public Province GetProvinceToGenerateFor()
+    {
+        return provinceToGenerateFor;
+    }
+
+    public void SetProvinceToGenerateFor(Province provinceToGenerateFor)
+    {
+        this.provinceToGenerateFor = provinceToGenerateFor;
+    }
+
+    public int GetX()
+    {
+        return x;
+    }
+
+    public int GetY()
+    {
+        return y;
+    }
+
+    public void SetX(int x)
+    {
+        this.x = x;
+    }
+
+    public void SetY(int y)
+    {
+        this.y = y;
+    }
+
+    public int DistanceTo(VoronoiSeed other)
+    {
+        return Math.Max(Math.Abs(other.GetX() - GetX()), Math.Abs(other.GetY() - GetY()));
+    }
+
+    public Vector2Int GetDifference(VoronoiSeed other)
+    {
+        return new Vector2Int(other.GetX() - GetX(), other.GetY() - GetY());
+    }
+
+    public void PushAway(List<VoronoiSeed> allSeeds, int distanceLimit)
+    {
+        for (int i = 0; i < allSeeds.Count; ++i)
+        {
+            VoronoiSeed otherSeed = allSeeds[i];
+
+            if (otherSeed == this)
+            {
+                continue;
+            }
+
+            int distance = DistanceTo(otherSeed);
+
+
+            if (distance < distanceLimit)
+            {
+                Vector2Int difference = GetDifference(otherSeed);
+                int xDiff = UnityEngine.Mathf.Clamp(difference.x, -1, 1);
+                int yDiff = UnityEngine.Mathf.Clamp(difference.y, -1, 1);
+                xDiff *= -1;
+                yDiff *= -1;
+
+                otherSeed.SetX(otherSeed.GetX() + xDiff);
+                otherSeed.SetY(otherSeed.GetY() + yDiff);
+
+                otherSeed.ValidateSeedPositionToWorld();
+
+            }
+
+        }
+
+    }
+
+    public void ValidateSeedPositionToWorld()
+    {
+        SetX(UnityEngine.Mathf.Clamp(GetX(), 0, GameWorld.INSTANCE.GetRealWorldWidth()));
+        SetY(UnityEngine.Mathf.Clamp(GetY(), 0, GameWorld.INSTANCE.GetRealWorldHeight()));
+    }
+
+    public VoronoiSeed(int x, int y)
+    {
+        this.x = x;
+        this.y = y;
+    }
+
+}
+
 public enum TerrainType
 {
-    [EnumMember(Value = "MUD_LANDS")]
     MUD_LANDS,
-    [EnumMember(Value = "SAND")]
     SAND,
-    [EnumMember(Value = "SNOW")]
     SNOW,
-    [EnumMember(Value = "MOUNTAINS")]
     MOUNTAINS,
-    [EnumMember(Value = "PLAINS")]
     PLAINS,
-    [EnumMember(Value = "HILLS")]
     HILLS,
-    [EnumMember(Value = "DEEP_WATER")]
     DEEP_WATER,
-    [EnumMember(Value = "WATER")]
     WATER,
-    [EnumMember(Value = "SHALLOW_WATER")]
     SHALLOW_WATER,
-    [EnumMember(Value = "FOREST")]
     FOREST
+
+}
+
+public static class EnumRandomGen
+{
+
+    public static T GenerateRandomEnum<T>() where T : struct, IConvertible
+    {
+        Array enumValues = Enum.GetValues(typeof(T));
+        return (T)enumValues.GetValue(UnityEngine.Random.Range(0, enumValues.Length));
+    }
+
+}
+
+public static class TerrainTypeData
+{
+    private static Dictionary<TerrainType, double> terrainTypeToDefaultHumidity = new Dictionary<TerrainType, double>();
+
+    
+    public static void _Init()
+    {
+        terrainTypeToDefaultHumidity[TerrainType.MUD_LANDS] = 0.12;
+        terrainTypeToDefaultHumidity[TerrainType.SAND] = 0.08;
+        terrainTypeToDefaultHumidity[TerrainType.SNOW] = 0.08;
+        terrainTypeToDefaultHumidity[TerrainType.MOUNTAINS] = 0.04;
+        terrainTypeToDefaultHumidity[TerrainType.PLAINS] = 0.9;
+        terrainTypeToDefaultHumidity[TerrainType.HILLS] = 0.5;
+        terrainTypeToDefaultHumidity[TerrainType.DEEP_WATER] = 0.0;
+        terrainTypeToDefaultHumidity[TerrainType.WATER] = 0.0;
+        terrainTypeToDefaultHumidity[TerrainType.SHALLOW_WATER] = 0.0;
+        terrainTypeToDefaultHumidity[TerrainType.FOREST] = 0.4;
+
+        Validate();
+    }
+
+    private static void Validate()
+    {
+        Array terrainTypes = Enum.GetValues(typeof(TerrainType));
+
+        foreach(TerrainType terrainType in terrainTypes)
+        {
+            if (!terrainTypeToDefaultHumidity.ContainsKey(terrainType))
+            {
+                Debug.LogWarning($"{typeof(TerrainTypeData)}: Validation for {terrainType} failed.");
+            }
+        }
+
+    }
+
+    public static double GetTerrainTypeDefaultHumidity(TerrainType terrainType)
+    {
+        return terrainTypeToDefaultHumidity[terrainType];
+    }
+
 }

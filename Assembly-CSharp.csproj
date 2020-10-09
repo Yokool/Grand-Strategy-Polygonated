@@ -64,10 +64,11 @@
     <Compile Include="Assets\Resources\Scripts\GameWorld\GameFileUtility.cs" />
     <Compile Include="Assets\Resources\Scripts\GameWorld\Direction.cs" />
     <Compile Include="Assets\Resources\Scripts\GameWorld\GameTexture2DUtility.cs" />
+    <Compile Include="Assets\Resources\Scripts\GameWorld\MathL.cs" />
     <Compile Include="Assets\Resources\Scripts\GameWorld\CameraDrag.cs" />
     <Compile Include="Assets\Resources\Scripts\GameWorld\OrderedRuntimeInitializer.cs" />
     <Compile Include="Assets\Resources\Scripts\GameWorld\DirectionExtension.cs" />
-    <Compile Include="Assets\Resources\Scripts\GameWorld\MathL.cs" />
+    <Compile Include="Assets\Resources\Scripts\GameWorld\SerializableColor32.cs" />
   </ItemGroup>
   <ItemGroup>
      <None Include="Assets\countries.xml" />
