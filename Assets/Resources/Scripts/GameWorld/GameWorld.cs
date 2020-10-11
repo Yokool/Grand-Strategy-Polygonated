@@ -28,6 +28,19 @@ public class GameWorld : MonoBehaviour
     [SerializeField]
     private int worldHeight;
 
+
+    private List<Province> worldProvinces;
+
+    public List<Province> GetWorldProvinces()
+    {
+        return worldProvinces;
+    }
+
+    public void AddProvince(Province province)
+    {
+        worldProvinces.Add(province);
+    }
+
     public int GetWorldWidth()
     {
         return worldWidth;
@@ -52,31 +65,198 @@ public class GameWorld : MonoBehaviour
     private int voronoiSeedCount;
 
     [SerializeField]
-    private int shiftNormalizationCount;
+    private int pushCount;
 
     [SerializeField]
     private int seedMinDistanceFromEachOther;
 
+
     private void Awake()
     {
         instance = this;
+        worldProvinces = new List<Province>();
         terrainTilemap = GetComponent<Tilemap>();
         terrainTilemapRenderer = GetComponent<TilemapRenderer>();
         CreateWorld();
     }
 
-    private void CreateWorld()
+    public void RecalculateProvinceBorderTiles()
     {
-        List<VoronoiSeed> seeds = new List<VoronoiSeed>();
-        CreateProvinceBackground(seeds);
-        PushSeeds(seeds);
-        GenerateProvincesForVoronoiSeeds(seeds);
-        AssignIndividualTilesToProvinces(seeds);
-        GenerateWorldContent(seeds);
+        for (int i = 0; i < worldProvinces.Count; ++i)
+        {
+            Province provinceToRecalculateFor = worldProvinces[i];
+            List<Vector2Int> provinceTiles = provinceToRecalculateFor.GetProvinceTiles();
+
+            for (int j = 0; j < provinceTiles.Count; ++j)
+            {
+
+                Vector2Int checkedTile = provinceTiles[j];
+
+                // Check tiles in a square around
+                // NOTE: Less readable, more optimized.
+                // NOTE: Possible code duplication, if you want move to method
+                Vector2Int N = new Vector2Int(checkedTile.x, checkedTile.y + 1);
+
+
+                if (!provinceTiles.Contains(N))
+                {
+                    provinceToRecalculateFor.AddProvinceBorderTile(checkedTile);
+                    continue;
+                }
+                
+                Vector2Int E = new Vector2Int(checkedTile.x + 1, checkedTile.y);
+
+                if (!provinceTiles.Contains(E))
+                {
+                    provinceToRecalculateFor.AddProvinceBorderTile(checkedTile);
+                    continue;
+                }
+
+                Vector2Int S = new Vector2Int(checkedTile.x, checkedTile.y - 1);
+
+                if (!provinceTiles.Contains(S))
+                {
+                    provinceToRecalculateFor.AddProvinceBorderTile(checkedTile);
+                    continue;
+                }
+
+                Vector2Int W = new Vector2Int(checkedTile.x - 1, checkedTile.y);
+
+                if (!provinceTiles.Contains(W))
+                {
+                    provinceToRecalculateFor.AddProvinceBorderTile(checkedTile);
+                    continue;
+                }
+
+                Vector2Int NE = new Vector2Int(checkedTile.x + 1, checkedTile.y + 1);
+
+                if (!provinceTiles.Contains(NE))
+                {
+                    provinceToRecalculateFor.AddProvinceBorderTile(checkedTile);
+                    continue;
+                }
+
+                Vector2Int SE = new Vector2Int(checkedTile.x + 1, checkedTile.y - 1);
+
+                if (!provinceTiles.Contains(SE))
+                {
+                    provinceToRecalculateFor.AddProvinceBorderTile(checkedTile);
+                    continue;
+                }
+
+                Vector2Int NW = new Vector2Int(checkedTile.x - 1, checkedTile.y + 1);
+
+                if (!provinceTiles.Contains(NW))
+                {
+                    provinceToRecalculateFor.AddProvinceBorderTile(checkedTile);
+                    continue;
+                }
+
+                Vector2Int SW = new Vector2Int(checkedTile.x - 1, checkedTile.y - 1);
+
+                if (!provinceTiles.Contains(SW))
+                {
+                    provinceToRecalculateFor.AddProvinceBorderTile(checkedTile);
+                    continue;
+                }
+
+
+                
+
+            }
+
+        }
+    }
+
+    public void RecalculateProvinceNeighbours()
+    {
+
+        for (int i = 0; i < worldProvinces.Count; ++i)
+        {
+            Province provinceToRecalculateFor = worldProvinces[i];
+
+            
+
+        }
 
     }
 
-    private void CreateProvinceBackground(List<VoronoiSeed> seeds)
+    private void CreateWorld()
+    {
+        long time = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        List<VoronoiSeed> seeds = new List<VoronoiSeed>();
+
+        SowVoronoiSeeds(seeds);
+        PushSeeds(seeds);
+        ValidateVoronoiSeeds(seeds);
+        GenerateProvincesForVoronoiSeeds(seeds);
+
+
+        AssignIndividualTilesToProvinces(seeds);
+        GenerateWorldTiles(seeds);
+
+        RecalculateProvinceBorderTiles();
+        
+        // TEST CODE:
+        /*
+        for (int i = 0; i < worldProvinces.Count; ++i)
+        {
+            Province p = worldProvinces[i];
+            
+            List<Vector2Int> borderTiles = p.GetProvinceBorderTiles();
+            
+            Color32 c = new Color32((byte)UnityEngine.Random.Range(0, 256), (byte)UnityEngine.Random.Range(0, 256), (byte)UnityEngine.Random.Range(0, 256), 255);
+            List<Vector2Int> provinceTiles = p.GetProvinceTiles();
+            for (int j = 0; j < provinceTiles.Count; ++j)
+            {
+                Vector2Int tile = provinceTiles[j];
+                terrainTilemap.SetTileFlags(new Vector3Int(tile.x, tile.y, 0), TileFlags.None);
+                terrainTilemap.SetColor(new Vector3Int(tile.x, tile.y, 0), c);
+                
+            }
+            
+            terrainTilemap.SetTileFlags(new Vector3Int(p.GetCenterTileLoc().x, p.GetCenterTileLoc().y, 0), TileFlags.None);
+            terrainTilemap.SetColor(new Vector3Int(p.GetCenterTileLoc().x, p.GetCenterTileLoc().y, 0), new Color(0, 0, 0, 1f));
+            
+
+            for (int j = 0; j < borderTiles.Count; ++j)
+            {
+                Vector2Int borderTile = borderTiles[j];
+                terrainTilemap.SetTileFlags(new Vector3Int(borderTile.x, borderTile.y, 0), TileFlags.None);
+                terrainTilemap.SetColor(new Vector3Int(borderTile.x, borderTile.y, 0), new Color(50f, 50f, 50f, 0.5f));
+            }
+            
+        }
+        */
+        time = System.Diagnostics.Stopwatch.GetTimestamp() - time;
+        Debug.Log("TIME TAKEN: " + time / 1_000_000.0);
+    }
+
+    private void ValidateVoronoiSeeds(List<VoronoiSeed> seeds)
+    {
+        for (int i = 0; i < seeds.Count; ++i)
+        {
+            VoronoiSeed seed = seeds[i];
+
+            for (int j = 0; j < seeds.Count; ++j)
+            {
+                VoronoiSeed otherSeed = seeds[j];
+                if (seed == otherSeed)
+                {
+                    continue;
+                }
+
+                if (seed.GetX() == otherSeed.GetX() && seed.GetY() == otherSeed.GetY())
+                {
+                    seeds.RemoveAt(j);
+                }
+
+            }
+        }
+    }
+
+    private void SowVoronoiSeeds(List<VoronoiSeed> seeds)
     {
         //Debug.Log("Creating seeds");
         for (int i = 0; i < voronoiSeedCount; ++i)
@@ -93,9 +273,9 @@ public class GameWorld : MonoBehaviour
     {
         //Debug.Log("Pushing seeds");
 
-        for(int i = 0; i < shiftNormalizationCount; ++i)
+        for(int i = 0; i < pushCount; ++i)
         {
-            for (int j = 0; j < voronoiSeedCount; ++j)
+            for (int j = 0; j < seeds.Count; ++j)
             {
                 VoronoiSeed seed = seeds[j];
                 seed.PushAway(seeds, seedMinDistanceFromEachOther);
@@ -108,18 +288,26 @@ public class GameWorld : MonoBehaviour
     {
         ProvinceDirector cachedDirector = new ProvinceDirector();
 
-        for(int i = 0; i < voronoiSeedCount; ++i)
+        for(int i = 0; i < seeds.Count; ++i)
         {
-            GenerateAProvinceForVoronoiSeed(cachedDirector, seeds[i]);
+            GenerateProvinceForVoronoiSeed(cachedDirector, seeds[i]);
         }
 
         
     }
 
-    private void GenerateAProvinceForVoronoiSeed(ProvinceDirector cachedDirector, VoronoiSeed seed)
+    private void GenerateProvinceForVoronoiSeed(ProvinceDirector cachedDirector, VoronoiSeed seed)
     {
+        // CHANGE TO RANDOM
         Province generatedProvince = cachedDirector.GenerateRandomProvince();
+        AddProvince(generatedProvince);
         seed.SetProvinceToGenerateFor(generatedProvince);
+
+        // The center of the voronoi seeds also constitutes as the center of the province
+        generatedProvince.SetCenterTileLoc(new Vector2Int(seed.GetX(), seed.GetY()));
+
+        //Debug.Log("Set a center for: x: " + generatedProvince.GetCenterTileLoc().x + " y: " + generatedProvince.GetCenterTileLoc().y);
+
     }
 
 
@@ -135,7 +323,7 @@ public class GameWorld : MonoBehaviour
 
                 VoronoiSeed smallestDistanceSeed = null;
 
-                for(int i = 0; i < voronoiSeedCount; ++i)
+                for(int i = 0; i < seeds.Count; ++i)
                 {
                     VoronoiSeed iteratedSeed = seeds[i];
 
@@ -145,31 +333,35 @@ public class GameWorld : MonoBehaviour
                     {
                         smallestDistance = distance;
                         smallestDistanceSeed = iteratedSeed;
-                        smallestDistanceSeed.AddTileInDistance(new Vector2Int(x, y));
                     }
 
                 }
-
+                smallestDistanceSeed.AddTileInDistance(new Vector2Int(x, y));
 
             }
         }
 
     }
 
-    private void GenerateWorldContent(List<VoronoiSeed> seeds)
+    private void GenerateWorldTiles(List<VoronoiSeed> seeds)
     {
 
-        for(int i = 0; i < voronoiSeedCount; ++i)
+        for(int i = 0; i < seeds.Count; ++i)
         {
             VoronoiSeed seed = seeds[i];
-            Province province = seed.GetProvinceToGenerateFor();
-            TerrainType provinceTerrainType = province.GetTerrainType();
-            List<Vector2Int> allTilesInDistance = seed.GetAllTilesInDistance();
+            
+            Province linkedVoronoiProvince = seed.GetProvinceToGenerateFor();
+            TerrainType provinceTerrainType = linkedVoronoiProvince.GetTerrainType();
 
-            for (int j = 0; j < allTilesInDistance.Count; ++j)
+            List<Vector2Int> allTilesInDistanceOfSeed = seed.GetAllTilesInDistance();
+            
+            linkedVoronoiProvince.AddAllProvinceTiles(allTilesInDistanceOfSeed);
+
+            for (int j = 0; j < allTilesInDistanceOfSeed.Count; ++j)
             {
-                Vector2Int tileInDistance = allTilesInDistance[j];
+                Vector2Int tileInDistance = allTilesInDistanceOfSeed[j];
                 terrainTilemap.SetTile(new Vector3Int(tileInDistance.x, tileInDistance.y, 0), GameTileSprites.GetSpriteFromTileID(provinceTerrainType));
+
             }
 
         }
@@ -182,6 +374,80 @@ public class Province
 {
 
     private TerrainType terrainType;
+
+    private Vector2Int centerTileLoc;
+
+    private List<Vector2Int> provinceTiles = new List<Vector2Int>();
+
+    private List<Province> provinceNeighbours = new List<Province>();
+    private List<Vector2Int> provinceBorderTiles = new List<Vector2Int>();
+
+    public void AddAllProvinceTiles(List<Vector2Int> provinceTiles)
+    {
+        this.provinceTiles.AddRange(provinceTiles);
+    }
+
+    public void AddProvinceTile(Vector2Int provinceTile)
+    {
+        this.provinceTiles.Add(provinceTile);
+    }
+
+    public List<Vector2Int> GetProvinceTiles()
+    {
+        return this.provinceTiles;
+    }
+
+    public void ClearProvinceNeighbours()
+    {
+        this.provinceNeighbours.Clear();
+    }
+
+    public void ClearBorderTiles()
+    {
+        this.provinceBorderTiles.Clear();
+    }
+
+    public void AddProvinceNeighbour(Province province)
+    {
+        this.provinceNeighbours.Add(province);
+    }
+
+    public void RemoveProvinceNeighbour(Province province)
+    {
+        this.provinceNeighbours.Remove(province);
+    }
+
+    public List<Province> GetProvinceNeighbours()
+    {
+        return provinceNeighbours;
+    }
+
+    public void AddProvinceBorderTile(Vector2Int tile)
+    {
+        provinceBorderTiles.Add(tile);
+    }
+
+    public void RemoveProvinceBorderTile(Vector2Int tile)
+    {
+        provinceBorderTiles.Remove(tile);
+    }
+
+    public List<Vector2Int> GetProvinceBorderTiles()
+    {
+        return provinceBorderTiles;
+    }
+
+
+    public void SetCenterTileLoc(Vector2Int centerTileLoc)
+    {
+        this.centerTileLoc = centerTileLoc;
+    }
+
+    public Vector2Int GetCenterTileLoc()
+    {
+        return centerTileLoc;
+    }
+
     public TerrainType GetTerrainType()
     {
         return terrainType;
@@ -190,6 +456,11 @@ public class Province
     public void SetTerrainType(TerrainType terrainType)
     {
         this.terrainType = terrainType;
+    }
+
+    public List<Province> GetNeighbours()
+    {
+        return provinceNeighbours;
     }
 
 }
@@ -221,6 +492,11 @@ public class ProvinceBuilder
         product.SetTerrainType(EnumRandomGen.GenerateRandomEnum<TerrainType>());
     }
 
+    public void BuildTerrainTypeDefault()
+    {
+        product.SetTerrainType(TerrainType.PLAINS);
+    }
+
 }
 
 public class ProvinceDirector
@@ -235,6 +511,12 @@ public class ProvinceDirector
     public Province GenerateRandomProvince()
     {
         provinceBuilder.BuildTerrainTypeRandomly();
+        return provinceBuilder.GetProduct();
+    }
+
+    public Province GenerateDefaultProvince()
+    {
+        provinceBuilder.BuildTerrainTypeDefault();
         return provinceBuilder.GetProduct();
     }
 
@@ -259,6 +541,7 @@ public class VoronoiSeed
 
 
     private Province provinceToGenerateFor;
+
     public Province GetProvinceToGenerateFor()
     {
         return provinceToGenerateFor;
