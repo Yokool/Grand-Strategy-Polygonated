@@ -31,6 +31,7 @@ public class GameWorld : MonoBehaviour
 
     private List<Province> worldProvinces;
 
+
     public List<Province> GetWorldProvinces()
     {
         return worldProvinces;
@@ -95,6 +96,7 @@ public class GameWorld : MonoBehaviour
                 // Check tiles in a square around
                 // NOTE: Less readable, more optimized.
                 // NOTE: Possible code duplication, if you want move to method
+
                 Vector2Int N = new Vector2Int(checkedTile.x, checkedTile.y + 1);
 
 
@@ -168,16 +170,66 @@ public class GameWorld : MonoBehaviour
         }
     }
 
-    public void RecalculateProvinceNeighbours()
+    public void RecalculateAllProvinceNeighbours()
     {
 
         for (int i = 0; i < worldProvinces.Count; ++i)
         {
             Province provinceToRecalculateFor = worldProvinces[i];
 
-            
+            List<Vector2Int> borderTiles = provinceToRecalculateFor.GetProvinceBorderTiles();
+
+            for (int j = 0; j < borderTiles.Count; ++j)
+            {
+                Vector2Int borderTile = borderTiles[j];
+
+                Vector2Int[] squareAround = TileUtilities.GetTilesInASquare(borderTile);
+
+                for(int k = 0; k < squareAround.Length; ++k)
+                {
+                    Vector2Int squareAroundTile = squareAround[k];
+                    Province tileOwner = GetTileOwner(squareAroundTile);
+
+                    if(tileOwner == null)
+                    {
+                        continue;
+                    }
+
+                    // Check for duplicates and ignore tiles that are owned
+                    // by the checking province.
+                    // TODO: MAYBE CHANGE THE CHECK TO THE ADDPROVINCENEIGHBOUR METHOD
+                    if (tileOwner == provinceToRecalculateFor || provinceToRecalculateFor.GetProvinceNeighbours().Contains(tileOwner))
+                    {
+                        continue;
+                    }
+
+                    provinceToRecalculateFor.AddProvinceNeighbour(tileOwner);
+                }
+
+                
+
+            }
+
 
         }
+
+    }
+
+    public Province GetTileOwner(Vector2Int tile)
+    {
+        List<Province> worldProvinces = GetWorldProvinces();
+        for (int i = 0; i < worldProvinces.Count; ++i)
+        {
+            Province province = worldProvinces[i];
+
+            if (province.GetProvinceTiles().Contains(tile))
+            {
+                return province;
+            }
+
+        }
+
+        return null;
 
     }
 
@@ -190,14 +242,28 @@ public class GameWorld : MonoBehaviour
         SowVoronoiSeeds(seeds);
         PushSeeds(seeds);
         ValidateVoronoiSeeds(seeds);
+
+
         GenerateProvincesForVoronoiSeeds(seeds);
 
+        time = System.Diagnostics.Stopwatch.GetTimestamp() - time;
+        Debug.Log("VORONOI GEN: " + time / 10000000.0);
+        time = System.Diagnostics.Stopwatch.GetTimestamp();
 
         AssignIndividualTilesToProvinces(seeds);
         GenerateWorldTiles(seeds);
 
+        time = System.Diagnostics.Stopwatch.GetTimestamp() - time;
+        Debug.Log("TILE ASSIGNMENT: " + time / 10000000.0);
+        time = System.Diagnostics.Stopwatch.GetTimestamp();
+
         RecalculateProvinceBorderTiles();
-        
+        RecalculateAllProvinceNeighbours();
+
+        time = System.Diagnostics.Stopwatch.GetTimestamp() - time;
+        Debug.Log("TIME TAKEN PROVINCE CALC: " + time / 10000000.0);
+        time = System.Diagnostics.Stopwatch.GetTimestamp();
+
         // TEST CODE:
         /*
         for (int i = 0; i < worldProvinces.Count; ++i)
@@ -229,8 +295,35 @@ public class GameWorld : MonoBehaviour
             
         }
         */
-        time = System.Diagnostics.Stopwatch.GetTimestamp() - time;
-        Debug.Log("TIME TAKEN: " + time / 1_000_000.0);
+
+        /*
+
+        Province p = worldProvinces[2];
+        Debug.Log(p.GetTerrainType());
+        List<Province> neighbours = p.GetProvinceNeighbours();
+
+        for(int i = 0; i < neighbours.Count; ++i)
+        {
+            List<Vector2Int> tiles = neighbours[i].GetProvinceTiles();
+            for(int j = 0; j < tiles.Count; ++j)
+            {
+                
+                Vector2Int tile = tiles[j];
+                terrainTilemap.SetTileFlags(new Vector3Int(tile.x, tile.y, 0), TileFlags.None);
+                terrainTilemap.SetColor(new Vector3Int(tile.x, tile.y, 0), new Color32(0, 0, 0, 255));
+
+
+            }
+        }
+
+
+        terrainTilemap.SetTileFlags(new Vector3Int(p.GetCenterTileLoc().x, p.GetCenterTileLoc().y, 0), TileFlags.None);
+        terrainTilemap.SetColor(new Vector3Int(p.GetCenterTileLoc().x, p.GetCenterTileLoc().y, 0), new Color32(255, 255, 0, 255)); terrainTilemap.SetColor(new Vector3Int(p.GetCenterTileLoc().x, p.GetCenterTileLoc().y, 0), new Color32(255, 255, 0, 255));
+        terrainTilemap.SetColor(new Vector3Int(p.GetCenterTileLoc().x, p.GetCenterTileLoc().y, 0), new Color32(255, 255, 0, 255));
+        terrainTilemap.SetColor(new Vector3Int(p.GetCenterTileLoc().x, p.GetCenterTileLoc().y, 0), new Color32(255, 255, 0, 255));
+        */
+
+
     }
 
     private void ValidateVoronoiSeeds(List<VoronoiSeed> seeds)
@@ -370,6 +463,28 @@ public class GameWorld : MonoBehaviour
 
 }
 
+public static class TileUtilities
+{
+
+    public static Vector2Int[] GetTilesInASquare(Vector2Int loc)
+    {
+
+        return new Vector2Int[8]
+        {
+            new Vector2Int(loc.x, loc.y + 1), // N
+            new Vector2Int(loc.x + 1, loc.y), // E
+            new Vector2Int(loc.x, loc.y - 1), // S
+            new Vector2Int(loc.x - 1, loc.y), // W
+            new Vector2Int(loc.x + 1, loc.y + 1), // NE
+            new Vector2Int(loc.x + 1, loc.y - 1), // SE
+            new Vector2Int(loc.x - 1, loc.y + 1), // NW
+            new Vector2Int(loc.x - 1, loc.y - 1) // SW
+        };
+
+    }
+
+}
+
 public class Province
 {
 
@@ -382,9 +497,36 @@ public class Province
     private List<Province> provinceNeighbours = new List<Province>();
     private List<Vector2Int> provinceBorderTiles = new List<Vector2Int>();
 
+    private Dictionary<Province, List<Vector2Int>> sharedBorders = new Dictionary<Province, List<Vector2Int>>();
+
+    public void AddBorderTileSharedWithNeighbour(Vector2Int tile, Province neighbour)
+    {
+
+        if (!sharedBorders.ContainsKey(neighbour))
+        {
+            sharedBorders.Add(neighbour, new List<Vector2Int>());
+        }
+
+        sharedBorders[neighbour].Add(tile);
+
+    }
+
+    public void RemoveBorderTileSharedWithNeighbour(Vector2Int tile, Province neighbour)
+    {
+        sharedBorders[neighbour].Remove(tile);
+    }
+
+    public List<Vector2Int> GetBordersTilesSharedWithNeighbour(Province neighbour)
+    {
+        return sharedBorders[neighbour];
+    }
+
     public void AddAllProvinceTiles(List<Vector2Int> provinceTiles)
     {
-        this.provinceTiles.AddRange(provinceTiles);
+        for(int i = 0; i < provinceTiles.Count; ++i)
+        {
+            AddProvinceTile(provinceTiles[i]);
+        }
     }
 
     public void AddProvinceTile(Vector2Int provinceTile)
