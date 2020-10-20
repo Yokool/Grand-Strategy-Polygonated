@@ -234,6 +234,13 @@ public class GameWorld : MonoBehaviour
 
     }
 
+    private List<Province> generateContentRequests = new List<Province>();
+
+    public void AddGenerateContentRequest(Province province)
+    {
+        generateContentRequests.Add(province);
+    }
+
     private void CreateWorld()
     {
         long time = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -245,7 +252,17 @@ public class GameWorld : MonoBehaviour
         ValidateVoronoiSeeds(seeds);
         GenerateProvincesFromVoronoiSeeds(seeds);
 
+
         BuildProvincesRecursively(seeds);
+
+
+
+
+        time = System.Diagnostics.Stopwatch.GetTimestamp() - time;
+        Debug.Log("Time it took to build provinces: " + (time / 10_000_000.0));
+
+
+        
 
         /*
         time = System.Diagnostics.Stopwatch.GetTimestamp() - time;
@@ -328,6 +345,24 @@ public class GameWorld : MonoBehaviour
 
     }
 
+
+    private int FUCK = 0;
+    private bool performedFuck = false;
+
+    private void Update()
+    {
+        ProcessGenerateContentForProviceRequests();
+    }
+
+    private void ProcessGenerateContentForProviceRequests()
+    {
+        while (generateContentRequests.Count > 0)
+        {
+            GenerateTileContentForProvince(generateContentRequests[0]);
+            generateContentRequests.RemoveAt(0);
+        }
+    }
+
     private void ValidateVoronoiSeeds(List<VoronoiSeed> seeds)
     {
         for (int i = 0; i < seeds.Count; ++i)
@@ -402,36 +437,6 @@ public class GameWorld : MonoBehaviour
 
     private void BuildProvincesRecursively(List<VoronoiSeed> seeds)
     {
-        /*
-         * LEGACY TILE IN DISTANCE CODE
-         * 
-        for (int y = 0; y < worldHeight; ++y)
-        {
-            for (int x = 0; x < worldWidth; ++x)
-            {
-
-                int smallestDistance = int.MaxValue;
-
-                VoronoiSeed smallestDistanceSeed = null;
-
-                for (int i = 0; i < seeds.Count; ++i)
-                {
-                    VoronoiSeed iteratedSeed = seeds[i];
-
-                    int distance = Math.Max(Math.Abs(x - iteratedSeed.GetX()), Math.Abs(y - iteratedSeed.GetY()));
-
-                    if (distance < smallestDistance)
-                    {
-                        smallestDistance = distance;
-                        smallestDistanceSeed = iteratedSeed;
-                    }
-
-                }
-                smallestDistanceSeed.AddTileInDistance(new Vector2Int(x, y));
-
-            }
-        }
-        */
 
         List<Province> worldProvinces = GetWorldProvinces();
         Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation = new Dictionary<Province, ProvinceRecursionInformation>();
@@ -442,36 +447,127 @@ public class GameWorld : MonoBehaviour
         }
 
         int randomIndex = UnityEngine.Random.Range(0, worldProvinces.Count);
-        BuildProvinceRecursively(worldProvinces[randomIndex], provinceRecursionInformation);
 
+        Thread startingThread = new Thread(new ParameterizedThreadStart(BuildProvinceRecursively_ThreadWrapperFunction));
+        BuildProvinceWrapperArgument cachedWrapper = new BuildProvinceWrapperArgument(worldProvinces[randomIndex], provinceRecursionInformation);
+        startingThread.Start(cachedWrapper);
+        //BuildProvinceRecursively(worldProvinces[randomIndex], provinceRecursionInformation);
+
+    }
+
+    private void BuildProvinceRecursively_ThreadWrapperFunction(object o)
+    {
+        BuildProvinceWrapperArgument wrapper = o as BuildProvinceWrapperArgument;
+        BuildProvinceRecursively(wrapper.Province, wrapper.Information);
     }
 
     private void BuildProvinceRecursively(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
     {
+        /* SINCE BUILD PROVINCE RECURSIVE THREAD CAN BE BUILT FOR ALREADY BUILDING PROVINCES, MAKE SURE TO HAVE IT COVERED */
         SetProvincesTilesInRange(province, provinceRecursionInformation);
-        GenerateTileContentForProvince(province, provinceRecursionInformation);
+
+        SetBorderTiles(province, provinceRecursionInformation);
+    }
+
+    private void SetBorderTiles(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    {
+        lock (provinceRecursionInformation)
+        {
+            // If we fallthrough on another thread
+            if (!provinceRecursionInformation[province].GetTileInRangeAssignmentFinished())
+            {
+                return;
+            }
+
+
+            if (provinceRecursionInformation[province].GetTileBorderAssignmentOngoing() || provinceRecursionInformation[province].GetTileBorderAssignmentFinished())
+            {
+                return;
+            }
+
+            provinceRecursionInformation[province].SetTileBorderAssignmentOngoing(true);
+        }
+
+
+        lock (province)
+        {
+
+            List<Vector2Int> provinceTiles = province.GetProvinceTiles();
+            lock (provinceTiles)
+            {
+                for (int i = 0; i < provinceTiles.Count; ++i)
+                {
+                    Vector2Int provinceTile = provinceTiles[i];
+
+                    Vector2Int[] squaresAround = TileUtilities.GetTilesInACross(provinceTile);
+
+
+                    for (int j = 0; j < squaresAround.Length; ++j)
+                    {
+                        Vector2Int squareAround = squaresAround[j];
+
+                        if (!provinceTiles.Contains(squareAround))
+                        {
+                            lock (province.GetProvinceBorderTiles())
+                            {
+                                province.AddProvinceBorderTile(provinceTile);
+                                break;
+                            }
+
+                        }
+
+
+                    }
+
+                }
+            }
+
+            lock (provinceRecursionInformation)
+            {
+                provinceRecursionInformation[province].SetTileBorderAssignmentFinished(true);
+            }
+            
+
+
+
+
+        }
+        
+
     }
 
     private void SetProvincesTilesInRange(Province subjectedProvince, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
     {
-        if (provinceRecursionInformation[subjectedProvince].GetTileInRangeAssignmentOngoing())
+        lock (provinceRecursionInformation)
         {
-            return;
+
+            if (provinceRecursionInformation[subjectedProvince].GetTileInRangeAssignmentFinished() || provinceRecursionInformation[subjectedProvince].GetTileInRangeAssignmentOngoing())
+            {
+                return;
+            }
+
+            provinceRecursionInformation[subjectedProvince].SetTileInRangeAssignmentOngoing(true);
         }
 
-        provinceRecursionInformation[subjectedProvince].SetTileInRangeAssignmentOngoing(true);
+        
 
-        Vector2Int subjectProvinceCenterLocation = subjectedProvince.GetCenterTileLoc();
+        lock (subjectedProvince)
+        {
+            Vector2Int subjectProvinceCenterLocation;
 
-        // The "real" province tile is not actually acknowledged until this line
-        subjectedProvince.AddProvinceTile(subjectProvinceCenterLocation);
+            subjectProvinceCenterLocation = subjectedProvince.GetCenterTileLoc();
 
+            // The "real" province tile is not actually acknowledged until this line
+            subjectedProvince.AddProvinceTile(subjectProvinceCenterLocation);
+        }
+
+        
         List<Province> foreignProvinces = new List<Province>();
 
         for (int a = 1; a < int.MaxValue; ++a)
         {
 
-            Vector2Int[] squareTiles = TileUtilities.GetTilesInSquareWithLength(subjectProvinceCenterLocation, a);
+            Vector2Int[] squareTiles = TileUtilities.GetTilesInSquareWithLength(subjectedProvince.GetCenterTileLoc(), a);
 
             int successfulTiles = 0;
 
@@ -498,11 +594,15 @@ public class GameWorld : MonoBehaviour
                 }
                 else
                 {
-                    // Additional check, don't even bother adding it if the method was already called
-                    if (provinceRecursionInformation[closestProvinceToTileInSquare].GetTileInRangeAssignmentOngoing())
+                    lock (provinceRecursionInformation)
                     {
-                        continue;
+                        // Additional check, don't even bother adding it if the method was already called
+                        if (provinceRecursionInformation[closestProvinceToTileInSquare].GetTileInRangeAssignmentOngoing())
+                        {
+                            continue;
+                        }
                     }
+                    
 
                     if (foreignProvinces.Contains(closestProvinceToTileInSquare))
                     {
@@ -516,10 +616,19 @@ public class GameWorld : MonoBehaviour
 
             if (successfulTiles == 0)
             {
-                for(int i = 0; i < foreignProvinces.Count; ++i)
+                
+
+                for (int i = 0; i < foreignProvinces.Count; ++i)
                 {
-                    BuildProvinceRecursively(foreignProvinces[i], provinceRecursionInformation);
+                    Thread thread = new Thread(BuildProvinceRecursively_ThreadWrapperFunction);
+                    thread.Start(new BuildProvinceWrapperArgument(foreignProvinces[i], provinceRecursionInformation));
                 }
+
+                lock (provinceRecursionInformation)
+                {
+                    provinceRecursionInformation[subjectedProvince].SetTileInRangeAssignmentFinished(true);
+                }
+                AddGenerateContentRequest(subjectedProvince);
 
                 return;
             }
@@ -528,23 +637,19 @@ public class GameWorld : MonoBehaviour
 
     }
 
-    private void GenerateTileContentForProvince(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    private void GenerateTileContentForProvince(Province province)
     {
-
-        if (provinceRecursionInformation[province].GetTileContentGenerationOngoing())
+        lock (province)
         {
-            return;
+            List<Vector2Int> tiles = province.GetProvinceTiles();
+
+            for (int i = 0; i < tiles.Count; ++i)
+            {
+                Vector2Int tile = tiles[i];
+                terrainTilemap.SetTile(new Vector3Int(tile.x, tile.y, 0), GameTileSprites.GetSpriteFromTileID(province.GetTerrainType()));
+            }
         }
-
-        provinceRecursionInformation[province].SetTileContentGenerationOngoing(true);
-
-        List<Vector2Int> tiles = province.GetProvinceTiles();
-
-        for(int i = 0; i < tiles.Count; ++i)
-        {
-            Vector2Int tile = tiles[i];
-            terrainTilemap.SetTile(new Vector3Int(tile.x, tile.y, 0), GameTileSprites.GetSpriteFromTileID(province.GetTerrainType()));
-        }
+        
 
 
     }
@@ -555,50 +660,120 @@ public class GameWorld : MonoBehaviour
         int minDistance = int.MaxValue;
         int foundIndex = -1;
 
-        List<Province> worldProvinces = GetWorldProvinces();
-
-        for (int i = 0; i < worldProvinces.Count; ++i)
+        lock (GetWorldProvinces())
+        
         {
-            Province worldProvince = worldProvinces[i];
-            Vector2Int provinceCenter = worldProvince.GetCenterTileLoc();
-
-            int distance = ChebyshevDistanceSystem.GetDistance(tile, provinceCenter);
-
-            if(distance < minDistance)
+            List<Province> worldProvinces = GetWorldProvinces();
+            for (int i = 0; i < worldProvinces.Count; ++i)
             {
-                minDistance = distance;
-                foundIndex = i;
-            }
+                Province worldProvince = worldProvinces[i];
 
+                lock (worldProvince)
+                {
+                    Vector2Int provinceCenter = worldProvince.GetCenterTileLoc();
+
+                    int distance = ChebyshevDistanceSystem.GetDistance(tile, provinceCenter);
+
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        foundIndex = i;
+                    }
+                }
+
+                
+
+            }
         }
 
         return worldProvinces[foundIndex];
 
     }
 
-    private void GenerateWorldTileContent(List<VoronoiSeed> seeds)
+
+
+
+
+}
+
+public static class OneDimensionalCustomNoise
+{
+
+    private static readonly int[] permutation = { 151,160,137,91,90,15,
+        131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
+        190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
+        88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
+        77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
+        102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
+        135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
+        5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
+        223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
+        129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
+        251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
+        49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
+        138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
+    };
+
+
+    public static double Noise(double x)
     {
 
-        for(int i = 0; i < seeds.Count; ++i)
-        {
-            VoronoiSeed seed = seeds[i];
-            
-            Province linkedVoronoiProvince = seed.GetProvinceToGenerateFor();
-            TerrainType provinceTerrainType = linkedVoronoiProvince.GetTerrainType();
+        int integerX = (int)x;
 
-            List<Vector2Int> allTilesInDistanceOfSeed = seed.GetAllTilesInDistance();
-            
-            linkedVoronoiProvince.AddAllProvinceTiles(allTilesInDistanceOfSeed);
+        int generatedValueX0 = GenerateValueForSpacedPoint(integerX);
+        int generatedValueX1 = GenerateValueForSpacedPoint(integerX + 1);
 
-            for (int j = 0; j < allTilesInDistanceOfSeed.Count; ++j)
-            {
-                Vector2Int tileInDistance = allTilesInDistanceOfSeed[j];
-                terrainTilemap.SetTile(new Vector3Int(tileInDistance.x, tileInDistance.y, 0), GameTileSprites.GetSpriteFromTileID(provinceTerrainType));
+        double difference = x - integerX;
 
-            }
+        return Interpolation.CosineInterpolation(generatedValueX0, generatedValueX1, difference);
 
-        }
 
+    }
+
+
+
+    private static int GenerateValueForSpacedPoint(int integerX)
+    {
+        return GenerateSign(integerX) * permutation[((integerX % permutation.Length) * integerX) % permutation.Length] / permutation[permutation[((integerX % permutation.Length) * integerX) % permutation.Length]];
+    }
+
+    private static int GenerateSign(int integerX)
+    {
+        return permutation[integerX % permutation.Length] > 127 ? 1 : -1;
+    }
+
+
+
+}
+
+public static class Interpolation
+{
+    public static double CosineInterpolation(double x1, double x2, double percentage)
+    {
+        double copy = (1 - Math.Cos(percentage * Math.PI)) / 2.0;
+        return (x1 * (1 - copy) + x2 * copy);
+    }
+}
+
+public class BuildProvinceWrapperArgument
+{
+
+    public Province Province
+    {
+        get;
+        set;
+    }
+
+    public Dictionary<Province, ProvinceRecursionInformation> Information
+    {
+        get;
+        set;
+    }
+
+    public BuildProvinceWrapperArgument(Province Province, Dictionary<Province, ProvinceRecursionInformation> Information)
+    {
+        this.Province = Province;
+        this.Information = Information;
     }
 
 }
@@ -619,16 +794,42 @@ public class ProvinceRecursionInformation
 {
 
     private bool tileInRangeAssignmentOngoing = false;
-    private bool tileContentGenerationOngoining = false;
+    private bool tileBorderAssignmentOngoing = false;
 
-    public bool GetTileContentGenerationOngoing()
+
+    private bool tileInRangeAssignmentFinished = false;
+    private bool tileBorderAssignmentFinished = false;
+
+    public void SetTileInRangeAssignmentFinished(bool tileInRangeAssignmentFinished)
     {
-        return this.tileContentGenerationOngoining;
+        this.tileInRangeAssignmentFinished = tileInRangeAssignmentFinished;
     }
 
-    public void SetTileContentGenerationOngoing(bool tileContentGenerationOngoing)
+    public bool GetTileInRangeAssignmentFinished()
     {
-        this.tileContentGenerationOngoining = tileContentGenerationOngoing;
+        return this.tileInRangeAssignmentFinished;
+    }
+
+    public void SetTileBorderAssignmentFinished(bool tileBorderAssignmentFinished)
+    {
+        this.tileBorderAssignmentFinished = tileBorderAssignmentFinished;
+    }
+
+    public bool GetTileBorderAssignmentFinished()
+    {
+        return this.tileBorderAssignmentFinished;
+    }
+
+
+
+    public bool GetTileBorderAssignmentOngoing()
+    {
+        return this.tileBorderAssignmentOngoing;
+    }
+
+    public void SetTileBorderAssignmentOngoing(bool tileContentGenerationOngoing)
+    {
+        this.tileBorderAssignmentOngoing = tileContentGenerationOngoing;
     }
 
     public bool GetTileInRangeAssignmentOngoing()
@@ -700,6 +901,18 @@ public static class TileUtilities
 
         return square;
 
+    }
+
+    public static Vector2Int[] GetTilesInACross(Vector2Int loc)
+    {
+        return new Vector2Int[4]
+        {
+            new Vector2Int(loc.x + 1, loc.y),
+            new Vector2Int(loc.x - 1, loc.y),
+            new Vector2Int(loc.x, loc.y + 1),
+            new Vector2Int(loc.x, loc.y - 1)
+
+        };
     }
 
 }

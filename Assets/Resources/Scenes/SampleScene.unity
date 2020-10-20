@@ -155,9 +155,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f86176b7b78b5994b84239180c86fe84, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  worldWidth: 100
-  worldHeight: 100
-  voronoiSeedCount: 400
+  worldWidth: 500
+  worldHeight: 500
+  voronoiSeedCount: 500
   pushCount: 0
   seedMinDistanceFromEachOther: 0
 --- !u!4 &326506647
@@ -386,7 +386,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 1
-  orthographic size: 15
+  orthographic size: 20
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
