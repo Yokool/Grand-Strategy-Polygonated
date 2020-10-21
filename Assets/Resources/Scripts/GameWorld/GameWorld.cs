@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
@@ -346,9 +347,6 @@ public class GameWorld : MonoBehaviour
     }
 
 
-    private int FUCK = 0;
-    private bool performedFuck = false;
-
     private void Update()
     {
         ProcessGenerateContentForProviceRequests();
@@ -448,26 +446,75 @@ public class GameWorld : MonoBehaviour
 
         int randomIndex = UnityEngine.Random.Range(0, worldProvinces.Count);
 
-        Thread startingThread = new Thread(new ParameterizedThreadStart(BuildProvinceRecursively_ThreadWrapperFunction));
+        //Thread startingThread = new Thread(new ParameterizedThreadStart(BuildProvinceRecursively_ThreadWrapperFunction));
+        
         BuildProvinceWrapperArgument cachedWrapper = new BuildProvinceWrapperArgument(worldProvinces[randomIndex], provinceRecursionInformation);
-        startingThread.Start(cachedWrapper);
+        //startingThread.Start(cachedWrapper);
+
+        BackgroundWorker startingThread = new BackgroundWorker();
+        startingThread.DoWork += new DoWorkEventHandler(BuildProvinceRecursively_ThreadWrapperFunction);
+        startingThread.RunWorkerAsync(cachedWrapper);
+        
         //BuildProvinceRecursively(worldProvinces[randomIndex], provinceRecursionInformation);
 
     }
 
+
+    private void BuildProvinceRecursively_ThreadWrapperFunction(object sender, DoWorkEventArgs e)
+    {
+        BuildProvinceWrapperArgument wrapper = e.Argument as BuildProvinceWrapperArgument;
+        BuildProvinceRecursively(wrapper.Province, wrapper.Information);
+    }
+    /*
     private void BuildProvinceRecursively_ThreadWrapperFunction(object o)
     {
         BuildProvinceWrapperArgument wrapper = o as BuildProvinceWrapperArgument;
         BuildProvinceRecursively(wrapper.Province, wrapper.Information);
     }
+    */
 
     private void BuildProvinceRecursively(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
     {
+
+        lock (provinceRecursionInformation)
+        {
+            ProvinceRecursionInformation recursionInfo = provinceRecursionInformation[province];
+
+            if (recursionInfo.GetCreatedThread())
+            {
+                Debug.LogWarning("A thread tried to build for a province, who already has a thread assigned and working for it.");
+                return;
+            }
+
+            recursionInfo.SetCreatedThread(true);
+
+        }
+
         /* SINCE BUILD PROVINCE RECURSIVE THREAD CAN BE BUILT FOR ALREADY BUILDING PROVINCES, MAKE SURE TO HAVE IT COVERED */
         SetProvincesTilesInRange(province, provinceRecursionInformation);
 
         SetBorderTiles(province, provinceRecursionInformation);
     }
+    /*
+    private void SetBordertileToNeighbour(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    {
+
+        List<Province> neighboursList = province.GetNeighbours();
+        Province[] neighbourArray = new Province[neighboursList.Count];
+        neighboursList.CopyTo(neighbourArray);
+
+        List<Province> neighboursQueue = new List<Province>(neighbourArray);
+
+        while (neighboursQueue.Count > 0)
+        {
+            Province neighbourProvince = neighboursQueue[0];
+            while (provinceRecursionInformation[neighbourProvince].GetTileInRangeAssignmentFinished())
+            {
+
+            }
+        }
+    }
+    */
 
     private void SetBorderTiles(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
     {
@@ -594,14 +641,7 @@ public class GameWorld : MonoBehaviour
                 }
                 else
                 {
-                    lock (provinceRecursionInformation)
-                    {
-                        // Additional check, don't even bother adding it if the method was already called
-                        if (provinceRecursionInformation[closestProvinceToTileInSquare].GetTileInRangeAssignmentOngoing())
-                        {
-                            continue;
-                        }
-                    }
+                    
                     
 
                     if (foreignProvinces.Contains(closestProvinceToTileInSquare))
@@ -610,6 +650,7 @@ public class GameWorld : MonoBehaviour
                     }
 
                     foreignProvinces.Add(closestProvinceToTileInSquare);
+                    subjectedProvince.AddProvinceNeighbour(closestProvinceToTileInSquare);
                 }
 
             }
@@ -620,8 +661,22 @@ public class GameWorld : MonoBehaviour
 
                 for (int i = 0; i < foreignProvinces.Count; ++i)
                 {
-                    Thread thread = new Thread(BuildProvinceRecursively_ThreadWrapperFunction);
-                    thread.Start(new BuildProvinceWrapperArgument(foreignProvinces[i], provinceRecursionInformation));
+
+                    lock (provinceRecursionInformation)
+                    {
+                        if (provinceRecursionInformation[foreignProvinces[i]].GetCreatedThread())
+                        {
+                            continue;
+                        }
+                    }
+
+                    //Thread thread = new Thread(BuildProvinceRecursively_ThreadWrapperFunction);
+                    //thread.Start(new BuildProvinceWrapperArgument(foreignProvinces[i], provinceRecursionInformation));
+
+                    BackgroundWorker backgroundWorker = new BackgroundWorker();
+                    backgroundWorker.DoWork += new DoWorkEventHandler(BuildProvinceRecursively_ThreadWrapperFunction);
+                    backgroundWorker.RunWorkerAsync(new BuildProvinceWrapperArgument(foreignProvinces[i], provinceRecursionInformation));
+                    
                 }
 
                 lock (provinceRecursionInformation)
@@ -632,6 +687,7 @@ public class GameWorld : MonoBehaviour
 
                 return;
             }
+
 
         }
 
@@ -790,8 +846,22 @@ public static class ChebyshevDistanceSystem
     }
 }
 
+
+
+
 public class ProvinceRecursionInformation
 {
+
+    private bool createdThread = false;
+    public void SetCreatedThread(bool createdThread)
+    {
+        this.createdThread = createdThread;
+    }
+
+    public bool GetCreatedThread()
+    {
+        return this.createdThread;
+    }
 
     private bool tileInRangeAssignmentOngoing = false;
     private bool tileBorderAssignmentOngoing = false;
@@ -799,6 +869,8 @@ public class ProvinceRecursionInformation
 
     private bool tileInRangeAssignmentFinished = false;
     private bool tileBorderAssignmentFinished = false;
+
+
 
     public void SetTileInRangeAssignmentFinished(bool tileInRangeAssignmentFinished)
     {
