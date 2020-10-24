@@ -179,7 +179,7 @@ public class GameWorld : MonoBehaviour
         {
             Province provinceToRecalculateFor = worldProvinces[i];
 
-            List<Vector2Int> borderTiles = provinceToRecalculateFor.GetProvinceBorderTiles();
+            List<Vector2Int> borderTiles = provinceToRecalculateFor.GetBorderTiles();
 
             for (int j = 0; j < borderTiles.Count; ++j)
             {
@@ -263,7 +263,7 @@ public class GameWorld : MonoBehaviour
         Debug.Log("Time it took to build provinces: " + (time / 10_000_000.0));
 
 
-        
+
 
         /*
         time = System.Diagnostics.Stopwatch.GetTimestamp() - time;
@@ -447,22 +447,20 @@ public class GameWorld : MonoBehaviour
         int randomIndex = UnityEngine.Random.Range(0, worldProvinces.Count);
 
         //Thread startingThread = new Thread(new ParameterizedThreadStart(BuildProvinceRecursively_ThreadWrapperFunction));
-        
+
         BuildProvinceWrapperArgument cachedWrapper = new BuildProvinceWrapperArgument(worldProvinces[randomIndex], provinceRecursionInformation);
         //startingThread.Start(cachedWrapper);
+        Thread thread = new Thread(BuildProvinceRecursively_ThreadWrapperFunction);
+        thread.Start(cachedWrapper);
 
-        BackgroundWorker startingThread = new BackgroundWorker();
-        startingThread.DoWork += new DoWorkEventHandler(BuildProvinceRecursively_ThreadWrapperFunction);
-        startingThread.RunWorkerAsync(cachedWrapper);
-        
         //BuildProvinceRecursively(worldProvinces[randomIndex], provinceRecursionInformation);
 
     }
 
 
-    private void BuildProvinceRecursively_ThreadWrapperFunction(object sender, DoWorkEventArgs e)
+    private void BuildProvinceRecursively_ThreadWrapperFunction(object e)
     {
-        BuildProvinceWrapperArgument wrapper = e.Argument as BuildProvinceWrapperArgument;
+        BuildProvinceWrapperArgument wrapper = e as BuildProvinceWrapperArgument;
         BuildProvinceRecursively(wrapper.Province, wrapper.Information);
     }
     /*
@@ -494,12 +492,23 @@ public class GameWorld : MonoBehaviour
         SetProvincesTilesInRange(province, provinceRecursionInformation);
 
         SetBorderTiles(province, provinceRecursionInformation);
+
+        StartNeighbourTaskFinishedLoop(province, provinceRecursionInformation);
+        AddGenerateContentRequest(province);
     }
-    /*
-    private void SetBordertileToNeighbour(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    /// <summary>
+    /// Currently a ungeneralized method for waiting the province members to do something.
+    /// </summary>
+    /// <param name="province"></param>
+    /// <param name="provinceRecursionInformation"></param>
+    private void StartNeighbourTaskFinishedLoop(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
     {
 
-        List<Province> neighboursList = province.GetNeighbours();
+        List<Province> neighboursList = null;
+        
+        neighboursList = province.GetNeighbours();
+        
+        
         Province[] neighbourArray = new Province[neighboursList.Count];
         neighboursList.CopyTo(neighbourArray);
 
@@ -508,13 +517,88 @@ public class GameWorld : MonoBehaviour
         while (neighboursQueue.Count > 0)
         {
             Province neighbourProvince = neighboursQueue[0];
-            while (provinceRecursionInformation[neighbourProvince].GetTileInRangeAssignmentFinished())
+
+            bool finished = false;
+
+            while (!finished)
+            {
+                finished = provinceRecursionInformation[neighbourProvince].GetTileInRangeAssignmentFinished();
+                // CHANGE WITH A WAIT MECHANISM DO NOT FORGET TO ADD LOCK STATEMENTS
+                Thread.Sleep(voronoiSeedCount * 1);
+            }
+
+            neighboursQueue.RemoveAt(0);
+
+        }
+
+        AssignBordersWithNeighbour(province, provinceRecursionInformation);
+
+    }
+
+    private void AssignBordersWithNeighbour(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    {
+        lock (provinceRecursionInformation)
+        {
+            provinceRecursionInformation[province].SetTileBorderToNeighbourAssignmentOngoing(true);
+        }
+        List<Province> neighbours = null;
+        List<Vector2Int> borderTiles = null;
+
+        lock (neighbours = province.GetNeighbours())
+        {
+            lock (borderTiles = province.GetBorderTiles())
             {
 
+                for (int i = 0; i < borderTiles.Count; ++i)
+                {
+                    Vector2Int borderTile = borderTiles[i];
+
+                    Vector2Int[] cross = TileUtilities.GetTilesInACross(borderTile);
+
+                    for (int j = 0; j < neighbours.Count; ++j)
+                    {
+                        Province neighbour = neighbours[j];
+
+                        for (int k = 0; k < cross.Length; ++k)
+                        {
+                            Vector2Int crossTile = cross[k];
+
+                            List<Vector2Int> neighbourBorderTiles = null;
+                            lock(neighbourBorderTiles = neighbour.GetBorderTiles())
+                            {
+                                if (neighbourBorderTiles.Contains(crossTile))
+                                {
+                                    province.AddBorderTileSharedWithNeighbour(borderTile, neighbour);
+                                    break;
+                                }
+                            }
+                            
+                        }
+
+
+
+                    }
+
+
+
+                }
+
             }
+            
         }
+        
+
+        lock (provinceRecursionInformation)
+        {
+            provinceRecursionInformation[province].SetTileBorderToNeighbourAssignmentFinished(true);
+            provinceRecursionInformation[province].SetTileBorderToNeighbourAssignmentOngoing(false);
+        }
+        
+        
+
+
     }
-    */
+    
 
     private void SetBorderTiles(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
     {
@@ -555,7 +639,7 @@ public class GameWorld : MonoBehaviour
 
                         if (!provinceTiles.Contains(squareAround))
                         {
-                            lock (province.GetProvinceBorderTiles())
+                            lock (province.GetBorderTiles())
                             {
                                 province.AddProvinceBorderTile(provinceTile);
                                 break;
@@ -574,10 +658,6 @@ public class GameWorld : MonoBehaviour
                 provinceRecursionInformation[province].SetTileBorderAssignmentFinished(true);
             }
             
-
-
-
-
         }
         
 
@@ -657,7 +737,12 @@ public class GameWorld : MonoBehaviour
 
             if (successfulTiles == 0)
             {
-                
+
+                lock (provinceRecursionInformation)
+                {
+                    provinceRecursionInformation[subjectedProvince].SetTileInRangeAssignmentOngoing(false);
+                    provinceRecursionInformation[subjectedProvince].SetTileInRangeAssignmentFinished(true);
+                }
 
                 for (int i = 0; i < foreignProvinces.Count; ++i)
                 {
@@ -670,20 +755,24 @@ public class GameWorld : MonoBehaviour
                         }
                     }
 
-                    //Thread thread = new Thread(BuildProvinceRecursively_ThreadWrapperFunction);
-                    //thread.Start(new BuildProvinceWrapperArgument(foreignProvinces[i], provinceRecursionInformation));
+                    Thread thread = new Thread(BuildProvinceRecursively_ThreadWrapperFunction);
 
-                    BackgroundWorker backgroundWorker = new BackgroundWorker();
-                    backgroundWorker.DoWork += new DoWorkEventHandler(BuildProvinceRecursively_ThreadWrapperFunction);
-                    backgroundWorker.RunWorkerAsync(new BuildProvinceWrapperArgument(foreignProvinces[i], provinceRecursionInformation));
-                    
+                    Province nextProvince = foreignProvinces[i];
+                    lock (nextProvince)
+                    {
+                        lock (provinceRecursionInformation)
+                        {
+                            provinceRecursionInformation[nextProvince].SetParent(subjectedProvince);
+                        }
+                    }
+
+                    thread.Start(new BuildProvinceWrapperArgument(nextProvince, provinceRecursionInformation));
+
                 }
 
-                lock (provinceRecursionInformation)
-                {
-                    provinceRecursionInformation[subjectedProvince].SetTileInRangeAssignmentFinished(true);
-                }
-                AddGenerateContentRequest(subjectedProvince);
+                
+
+                //AddGenerateContentRequest(subjectedProvince);
 
                 return;
             }
@@ -863,12 +952,45 @@ public class ProvinceRecursionInformation
         return this.createdThread;
     }
 
+
     private bool tileInRangeAssignmentOngoing = false;
     private bool tileBorderAssignmentOngoing = false;
-
+    private bool tileBorderToNeighbourAssignmentOngoing = false;
 
     private bool tileInRangeAssignmentFinished = false;
     private bool tileBorderAssignmentFinished = false;
+    private bool tileBorderToNeighbourAssignmentFinished = false;
+
+    private Province parent;
+    public Province GetParent()
+    {
+        return this.parent;
+    }
+
+    public void SetParent(Province parent)
+    {
+        this.parent = parent;
+    }
+
+    public bool GetTileBorderToNeighbourAssignmentOngoing()
+    {
+        return this.tileBorderToNeighbourAssignmentOngoing;
+    }
+
+    public void SetTileBorderToNeighbourAssignmentOngoing(bool tileBorderToNeighbourAssignmentOngoing)
+    {
+        this.tileBorderToNeighbourAssignmentOngoing = tileBorderToNeighbourAssignmentOngoing;
+    }
+
+    public bool GetTileBorderToNeighbourAssignmentFinished()
+    {
+        return this.tileBorderToNeighbourAssignmentFinished;
+    }
+
+    public void SetTileBorderToNeighbourAssignmentFinished(bool tileBorderToNeighbourAssignmentFinished)
+    {
+        this.tileBorderToNeighbourAssignmentFinished = tileBorderToNeighbourAssignmentFinished;
+    }
 
 
 
@@ -1078,7 +1200,7 @@ public class Province
         provinceBorderTiles.Remove(tile);
     }
 
-    public List<Vector2Int> GetProvinceBorderTiles()
+    public List<Vector2Int> GetBorderTiles()
     {
         return provinceBorderTiles;
     }

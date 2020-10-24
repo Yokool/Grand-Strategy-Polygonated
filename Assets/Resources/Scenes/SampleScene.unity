@@ -155,9 +155,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f86176b7b78b5994b84239180c86fe84, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  worldWidth: 400
-  worldHeight: 400
-  voronoiSeedCount: 1200
+  worldWidth: 100
+  worldHeight: 100
+  voronoiSeedCount: 100
   pushCount: 0
   seedMinDistanceFromEachOther: 0
 --- !u!4 &326506647
