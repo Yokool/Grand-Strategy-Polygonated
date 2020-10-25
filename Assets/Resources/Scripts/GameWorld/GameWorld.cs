@@ -200,7 +200,7 @@ public class GameWorld : MonoBehaviour
                     // Check for duplicates and ignore tiles that are owned
                     // by the checking province.
                     // TODO: MAYBE CHANGE THE CHECK TO THE ADDPROVINCENEIGHBOUR METHOD
-                    if (tileOwner == provinceToRecalculateFor || provinceToRecalculateFor.GetProvinceNeighbours().Contains(tileOwner))
+                    if (tileOwner == provinceToRecalculateFor || provinceToRecalculateFor.GetNeighbours().Contains(tileOwner))
                     {
                         continue;
                     }
@@ -493,17 +493,132 @@ public class GameWorld : MonoBehaviour
 
         SetBorderTiles(province, provinceRecursionInformation);
 
-        StartNeighbourTaskFinishedLoop(province, provinceRecursionInformation);
+        SetProvinceNeighbour(province, provinceRecursionInformation);
+
+        WaitForAllNeighboursToFinishTileInRangeAssignment(province, provinceRecursionInformation);
+
+        Thread.Sleep(5000);
+
+        for (int j = 0; j < province.GetNeighbours().Count; ++j)
+        {
+            List<Vector2Int> tiles = province.GetBordersTilesSharedWithNeighbour(province.GetNeighbours()[j]);
+
+            for (int i = 0; i < tiles.Count; ++i)
+            {
+                province.RemoveProvinceTile(tiles[i]);
+            }
+
+        }
+
+
         AddGenerateContentRequest(province);
     }
+
+    public void SetProvinceNeighbour(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    {
+        // TODO: ADD RECURSION INFO SHIT
+        RecalculateProvinceNeighbours(province);
+    }
+
+    public void RecalculateProvinceNeighbours(Province province)
+    {
+        List<Vector2Int> borderTiles = province.GetBorderTiles();
+
+        for (int i = 0; i < borderTiles.Count; ++i)
+        {
+            Vector2Int borderTile = borderTiles[i];
+            RecalculateProvinceNeighboursForTile(province, borderTile);
+        }
+    }
+
+    public void RecalculateProvinceNeighboursForTile(Province province, Vector2Int tile)
+    {
+        if (!province.IsBorderTile(tile))
+        {
+            Debug.LogError("ASSERTION FAILED");
+            return;
+        }
+
+        Vector2Int[] crossTiles = TileUtilities.GetTilesInACross(tile);
+
+        for(int i = 0; i < crossTiles.Length; ++i)
+        {
+            Vector2Int crossTile = crossTiles[i];
+            Province neighbour = GameWorld.INSTANCE.GetClosestProvinceToTile(crossTile);
+            province.AddProvinceNeighbour(neighbour);
+        }
+
+    }
+
+    /*
+    private void RoughUpBorderTiles(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    {
+        List<Province> neighbours = province.GetNeighbours();
+
+        for (int i = 0; i < neighbours.Count; ++i)
+        {
+            Province neighbour = neighbours[i];
+            List<Vector2Int> borderTiles = province.GetBordersTilesSharedWithNeighbour(neighbour);
+
+            for (int j = 0; j < borderTiles.Count; ++j)
+            {
+                Vector2Int borderTile = borderTiles[i];
+
+                RoughUpBorderTile(province, provinceRecursionInformation, borderTile, neighbour);
+
+
+            }
+
+
+        }
+
+    }
+
+    private void RoughUpBorderTile(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation, Vector2Int borderTile, Province neighbour)
+    {
+        int borderTileRoughUpIndex = UnityEngine.Random.Range(-3, 4);
+
+        // 0 - maintains the status quo, resulting in the tile staying where it is
+        if (borderTileRoughUpIndex == 0)
+        {
+            return;
+        }
+
+
+        Vector2Int[] tilesInACross = TileUtilities.GetTilesInACross(borderTile);
+
+        List<Vector2Int> friendlyTiles = new List<Vector2Int>();
+        List<Vector2Int> foreignTiles = new List<Vector2Int>();
+
+        for (int k = 0; k < tilesInACross.Length; ++k)
+        {
+            Vector2Int tileInACross = friendlyTiles[k];
+            if (province.GetProvinceTiles().Contains(tileInACross))
+            {
+                friendlyTiles.Add(tileInACross);
+            }
+            else if (neighbour.GetProvinceTiles().Contains(tileInACross))
+            {
+                foreignTiles.Add(tileInACross);
+            }
+            else // TODO: REMOVE AFTER DEBUGGING
+            {
+                Debug.LogError("ASSERTION FAILED: CODE BLOCK SHOULD NOT BE EXECUTED.");
+            }
+
+        }
+
+    }
+    */
+
     /// <summary>
     /// Currently a ungeneralized method for waiting the province members to do something.
     /// </summary>
     /// <param name="province"></param>
     /// <param name="provinceRecursionInformation"></param>
-    private void StartNeighbourTaskFinishedLoop(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    private void WaitForAllNeighboursToFinishTileInRangeAssignment(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
     {
-
+        // TODO: ADD LOCK STATEMENTS
         List<Province> neighboursList = null;
         
         neighboursList = province.GetNeighbours();
@@ -522,8 +637,8 @@ public class GameWorld : MonoBehaviour
 
             while (!finished)
             {
-                finished = provinceRecursionInformation[neighbourProvince].GetTileInRangeAssignmentFinished();
-                // CHANGE WITH A WAIT MECHANISM DO NOT FORGET TO ADD LOCK STATEMENTS
+                finished = provinceRecursionInformation[neighbourProvince].GetTileInRangeAssignmentFinished() && provinceRecursionInformation[neighbourProvince].GetTileBorderAssignmentFinished();
+                // TODO: CHANGE WITH A WAIT MECHANISM DO NOT FORGET TO ADD LOCK STATEMENTS
                 Thread.Sleep(voronoiSeedCount * 1);
             }
 
@@ -531,63 +646,31 @@ public class GameWorld : MonoBehaviour
 
         }
 
-        AssignBordersWithNeighbour(province, provinceRecursionInformation);
+        AssignBordersWithNeighbours(province, provinceRecursionInformation);
 
     }
 
-    private void AssignBordersWithNeighbour(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
+    private void AssignBordersWithNeighbours(Province province, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
     {
         lock (provinceRecursionInformation)
         {
             provinceRecursionInformation[province].SetTileBorderToNeighbourAssignmentOngoing(true);
         }
-        List<Province> neighbours = null;
-        List<Vector2Int> borderTiles = null;
 
-        lock (neighbours = province.GetNeighbours())
+        lock (province)
         {
-            lock (borderTiles = province.GetBorderTiles())
+
+            List<Vector2Int> borderTiles = province.GetBorderTiles();
+
+        
+            for (int i = 0; i < borderTiles.Count; ++i)
             {
-
-                for (int i = 0; i < borderTiles.Count; ++i)
-                {
-                    Vector2Int borderTile = borderTiles[i];
-
-                    Vector2Int[] cross = TileUtilities.GetTilesInACross(borderTile);
-
-                    for (int j = 0; j < neighbours.Count; ++j)
-                    {
-                        Province neighbour = neighbours[j];
-
-                        for (int k = 0; k < cross.Length; ++k)
-                        {
-                            Vector2Int crossTile = cross[k];
-
-                            List<Vector2Int> neighbourBorderTiles = null;
-                            lock(neighbourBorderTiles = neighbour.GetBorderTiles())
-                            {
-                                if (neighbourBorderTiles.Contains(crossTile))
-                                {
-                                    province.AddBorderTileSharedWithNeighbour(borderTile, neighbour);
-                                    break;
-                                }
-                            }
-                            
-                        }
-
-
-
-                    }
-
-
-
-                }
-
+                Vector2Int borderTile = borderTiles[i];
+                RecalculateNeighbourSharedBordersForTile(province, borderTile);
             }
-            
+
         }
         
-
         lock (provinceRecursionInformation)
         {
             provinceRecursionInformation[province].SetTileBorderToNeighbourAssignmentFinished(true);
@@ -596,6 +679,45 @@ public class GameWorld : MonoBehaviour
         
         
 
+
+    }
+
+    public void RecalculateNeighbourSharedBordersForTile(Province province, Vector2Int borderTile)
+    {
+
+        Vector2Int[] cross = TileUtilities.GetTilesInACross(borderTile);
+
+        lock (province)
+        {
+
+            List<Province> neighbours = province.GetNeighbours();
+
+        
+            for (int j = 0; j < neighbours.Count; ++j)
+            {
+                Province neighbour = neighbours[j];
+
+                for (int k = 0; k < cross.Length; ++k)
+                {
+                    Vector2Int crossTile = cross[k];
+
+                    List<Vector2Int> neighbourBorderTiles = null;
+                    lock (neighbourBorderTiles = neighbour.GetBorderTiles())
+                    {
+                        if (neighbourBorderTiles.Contains(crossTile))
+                        {
+                            province.AddBorderTileSharedWithNeighbour(borderTile, neighbour);
+                            break;
+                        }
+                    }
+
+                }
+
+
+
+            }
+            
+        }
 
     }
     
@@ -611,7 +733,7 @@ public class GameWorld : MonoBehaviour
             }
 
 
-            if (provinceRecursionInformation[province].GetTileBorderAssignmentOngoing() || provinceRecursionInformation[province].GetTileBorderAssignmentFinished())
+            if (provinceRecursionInformation[province].GetTileBorderAssignmentOngoing())
             {
                 return;
             }
@@ -623,35 +745,7 @@ public class GameWorld : MonoBehaviour
         lock (province)
         {
 
-            List<Vector2Int> provinceTiles = province.GetProvinceTiles();
-            lock (provinceTiles)
-            {
-                for (int i = 0; i < provinceTiles.Count; ++i)
-                {
-                    Vector2Int provinceTile = provinceTiles[i];
-
-                    Vector2Int[] squaresAround = TileUtilities.GetTilesInACross(provinceTile);
-
-
-                    for (int j = 0; j < squaresAround.Length; ++j)
-                    {
-                        Vector2Int squareAround = squaresAround[j];
-
-                        if (!provinceTiles.Contains(squareAround))
-                        {
-                            lock (province.GetBorderTiles())
-                            {
-                                province.AddProvinceBorderTile(provinceTile);
-                                break;
-                            }
-
-                        }
-
-
-                    }
-
-                }
-            }
+            RecalculateBorderTiles(province);
 
             lock (provinceRecursionInformation)
             {
@@ -661,6 +755,44 @@ public class GameWorld : MonoBehaviour
         }
         
 
+    }
+
+    public void RecalculateBorderTiles(Province province)
+    {
+        List<Vector2Int> provinceTiles = province.GetProvinceTiles();
+
+        for (int i = 0; i < provinceTiles.Count; ++i)
+        {
+            Vector2Int provinceTile = provinceTiles[i];
+            RecalculateBorderTile(province, provinceTile);
+            
+        }
+        
+    }
+
+    public void RecalculateBorderTile(Province province, Vector2Int provinceTile)
+    {
+
+        List<Vector2Int> provinceTiles = province.GetProvinceTiles();
+
+        Vector2Int[] squaresAround = TileUtilities.GetTilesInACross(provinceTile);
+
+
+        for (int j = 0; j < squaresAround.Length; ++j)
+        {
+            Vector2Int squareAround = squaresAround[j];
+
+            if (!provinceTiles.Contains(squareAround))
+            {
+                lock (province.GetBorderTiles())
+                {
+                    province.AddProvinceBorderTile(provinceTile);
+                    break;
+                }
+
+            }
+
+        }
     }
 
     private void SetProvincesTilesInRange(Province subjectedProvince, Dictionary<Province, ProvinceRecursionInformation> provinceRecursionInformation)
@@ -730,7 +862,6 @@ public class GameWorld : MonoBehaviour
                     }
 
                     foreignProvinces.Add(closestProvinceToTileInSquare);
-                    subjectedProvince.AddProvinceNeighbour(closestProvinceToTileInSquare);
                 }
 
             }
@@ -1124,6 +1255,83 @@ public class Province
     private List<Vector2Int> provinceBorderTiles = new List<Vector2Int>();
 
     private Dictionary<Province, List<Vector2Int>> sharedBorders = new Dictionary<Province, List<Vector2Int>>();
+    /// <summary>
+    /// UNTESTED
+    /// </summary>
+    /// <param name="tileToRemove"></param>
+    public void RemoveTileAllConnectionsSafely(Vector2Int tileToRemove)
+    {
+        RemoveProvinceTile(tileToRemove);
+        if (IsBorderTile(tileToRemove))
+        {
+            RemoveBorderTileSafely(tileToRemove);
+        }
+    }
+
+    
+
+    public bool IsBorderTile(Vector2Int tileToCheck)
+    {
+        return GetBorderTiles().Contains(tileToCheck);
+    }
+    /// <summary>
+    /// UNTESTED
+    /// </summary>
+    /// <param name="tileToRemove"></param>
+    public void RemoveBorderTileSafely(Vector2Int tileToRemove)
+    {
+        
+
+        List<Province> tileNeighbours = GetBorderTileNeighbours(tileToRemove);
+        for (int i = 0; i < tileNeighbours.Count; ++i)
+        {
+            Province neighbour = tileNeighbours[i];
+            neighbour.RemoveBorderTileSharedWithNeighbour(tileToRemove, this);
+        }
+
+        GetBorderTiles().Remove(tileToRemove);
+
+        for (int i = 0; i < tileNeighbours.Count; ++i)
+        {
+            Province neighbour = tileNeighbours[i];
+
+            Vector2Int[] cross = TileUtilities.GetTilesInACross(tileToRemove);
+            for(int j = 0; j < cross.Length; ++j)
+            {
+
+                Vector2Int crossTile = cross[j];
+
+                if (!neighbour.GetProvinceTiles().Contains(crossTile))
+                {
+                    if (!neighbour.GetBorderTiles().Contains(crossTile))
+                    {
+                        Debug.Log("ASSERTION FAILED: THIS CODE BLOCK SHOULD NOT BE EXECUTED.");
+                    }
+                    continue;
+                }
+
+                GameWorld.INSTANCE.RecalculateNeighbourSharedBordersForTile(neighbour, crossTile);
+            }
+
+        }
+
+        Vector2Int[] crossTwo = TileUtilities.GetTilesInACross(tileToRemove);
+        for (int j = 0; j < crossTwo.Length; ++j)
+        {
+
+            Vector2Int crossTile = crossTwo[j];
+
+            if (GetProvinceTiles().Contains(crossTile))
+            {
+                GameWorld.INSTANCE.RecalculateBorderTile(this, crossTile);
+                GameWorld.INSTANCE.RecalculateNeighbourSharedBordersForTile(this, crossTile);
+            }
+
+        }
+
+
+
+    }
 
     public void AddBorderTileSharedWithNeighbour(Vector2Int tile, Province neighbour)
     {
@@ -1142,6 +1350,26 @@ public class Province
         sharedBorders[neighbour].Remove(tile);
     }
 
+    public List<Province> GetBorderTileNeighbours(Vector2Int borderTile)
+    {
+        List<Province> neighbours = new List<Province>();
+
+        List<Province> allNeighbours = GetNeighbours();
+
+        for(int i = 0; i < allNeighbours.Count; ++i)
+        {
+            Province neighbour = allNeighbours[i];
+            if (GetBordersTilesSharedWithNeighbour(neighbour).Contains(borderTile))
+            {
+                neighbours.Add(neighbour);
+            }
+
+        }
+
+        return neighbours;
+
+    }
+
     public List<Vector2Int> GetBordersTilesSharedWithNeighbour(Province neighbour)
     {
         return sharedBorders[neighbour];
@@ -1158,6 +1386,11 @@ public class Province
     public void AddProvinceTile(Vector2Int provinceTile)
     {
         this.provinceTiles.Add(provinceTile);
+    }
+
+    public void RemoveProvinceTile(Vector2Int provinceTile)
+    {
+        this.provinceTiles.Remove(provinceTile);
     }
 
     public List<Vector2Int> GetProvinceTiles()
@@ -1185,10 +1418,6 @@ public class Province
         this.provinceNeighbours.Remove(province);
     }
 
-    public List<Province> GetProvinceNeighbours()
-    {
-        return provinceNeighbours;
-    }
 
     public void AddProvinceBorderTile(Vector2Int tile)
     {
