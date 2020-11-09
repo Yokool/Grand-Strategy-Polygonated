@@ -157,7 +157,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   worldWidth: 50
   worldHeight: 50
-  voronoiSeedCount: 50
+  voronoiSeedCount: 2
   pushCount: 0
   seedMinDistanceFromEachOther: 0
 --- !u!4 &326506647
